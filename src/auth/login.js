@@ -1,5 +1,5 @@
 // ============================================
-// Login Page with Admin 2-Step Verification (2FA)
+// Login Page with Admin 2-Step Verification (2FA - Email)
 // ============================================
 
 import { Store } from '../data/store.js';
@@ -59,7 +59,7 @@ export function render() {
                 </form>
               </div>
 
-              <!-- STEP 2: Mobile Number Verification -->
+              <!-- STEP 2: Email Verification -->
               <div class="login-step" style="width: 33.333%; flex-shrink: 0; padding: 0 4px;">
                 <form id="login-form-step2" style="display:flex; flex-direction:column; gap:16px;">
                   <div style="text-align: center; margin-bottom: 4px;">
@@ -67,16 +67,13 @@ export function render() {
                   </div>
                   
                   <div style="text-align: center; margin-bottom: 8px;">
-                    <h3 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 6px; color: var(--text-primary);">Verify Mobile Number</h3>
-                    <p style="font-size: 0.78rem; color: var(--text-muted); line-height: 1.4;">For security, please enter the registered mobile number associated with the Admin account.</p>
+                    <h3 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 6px; color: var(--text-primary);">Verify Email Address</h3>
+                    <p style="font-size: 0.78rem; color: var(--text-muted); line-height: 1.4;">For security, please enter the registered email address associated with the Admin account.</p>
                   </div>
 
                   <div class="form-group" style="margin-bottom: 0;">
-                    <label class="form-label" for="login-mobile">Registered Mobile Number</label>
-                    <div style="position: relative; width: 100%;">
-                      <span style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 0.88rem; font-weight: 700; color: var(--text-muted); z-index: 10;">+91</span>
-                      <input type="tel" id="login-mobile" class="form-input login-mobile-input" placeholder="75979XXXXX" pattern="[0-9]{10}" maxlength="10" required />
-                    </div>
+                    <label class="form-label" for="login-email">Registered Email Address</label>
+                    <input type="email" id="login-email" class="form-input" placeholder="example@gmail.com" required style="color: var(--text-primary); font-weight: 500;" />
                   </div>
 
                   <div class="login-error" id="login-error-step2" style="min-height: 14px; font-size: 0.8rem; color: var(--danger); text-align: center;"></div>
@@ -86,7 +83,7 @@ export function render() {
                       Back
                     </button>
                     <button type="submit" class="btn btn-primary" style="flex: 2;">
-                      Send OTP
+                      Send OTP Code
                     </button>
                   </div>
                 </form>
@@ -101,7 +98,7 @@ export function render() {
 
                   <div style="text-align: center; margin-bottom: 8px;">
                     <h3 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 6px; color: var(--text-primary);">Enter Verification Code</h3>
-                    <p style="font-size: 0.78rem; color: var(--text-muted); line-height: 1.4;">A 6-digit OTP code has been sent to +91 75979 07444.</p>
+                    <p style="font-size: 0.78rem; color: var(--text-muted); line-height: 1.4;">A 6-digit OTP code has been sent to nitesh8555@gmail.com.</p>
                   </div>
 
                   <!-- 6 digit code boxes -->
@@ -160,14 +157,14 @@ function goToStep(step) {
   }
 }
 
-function triggerSmsNotification(otp) {
+function triggerEmailNotification(otp) {
   // Clear any existing banners
-  const existing = document.getElementById('sms-simulator-banner');
+  const existing = document.getElementById('email-simulator-banner');
   if (existing) existing.remove();
 
   // Create sliding banner
   const banner = document.createElement('div');
-  banner.id = 'sms-simulator-banner';
+  banner.id = 'email-simulator-banner';
   banner.style.cssText = `
     position: fixed;
     top: -120px;
@@ -190,16 +187,16 @@ function triggerSmsNotification(otp) {
   `;
 
   banner.innerHTML = `
-    <div style="background: var(--success); width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-      <span class="material-icons-round" style="font-size: 22px; color: white;">sms</span>
+    <div style="background: var(--info); width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+      <span class="material-icons-round" style="font-size: 22px; color: white;">mail</span>
     </div>
     <div style="flex: 1; font-family: var(--font-body);">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-        <span style="font-weight: 700; font-size: 0.82rem; letter-spacing: 0.5px; color: var(--accent-gold);">KAKA-SECURE (SMS)</span>
+        <span style="font-weight: 700; font-size: 0.82rem; letter-spacing: 0.5px; color: var(--accent-gold);">KAKA-MAIL (Secure OTP)</span>
         <span style="font-size: 0.65rem; color: var(--text-dim);">now</span>
       </div>
       <p style="font-size: 0.78rem; line-height: 1.4; margin: 0; color: #f1f5f9;">
-        SMS from KAKA-SECURE: Use OTP <strong style="font-size: 0.92rem; color: #ffffff; background: rgba(255,255,255,0.15); padding: 1px 6px; border-radius: 4px; border: 1px dashed rgba(255,255,255,0.3); font-family: monospace;">${otp}</strong> to login as Admin. Valid for 2 mins.
+        Verification Code for Admin: <strong style="font-size: 0.92rem; color: #ffffff; background: rgba(255,255,255,0.15); padding: 1px 6px; border-radius: 4px; border: 1px dashed rgba(255,255,255,0.3); font-family: monospace;">${otp}</strong>. Valid for 2 mins.
       </p>
     </div>
   `;
@@ -258,44 +255,53 @@ function startCountdown() {
   }, 1000);
 }
 
-// Function to send real OTP via WhatsApp or SMS API
-async function sendRealOtp(mobile, otp) {
-  const apiKey = import.meta.env.VITE_SMS_API_KEY || '';
-  const message = `*Kaka FMCG Secure OTP*\n\nYour Admin Login OTP code is: *${otp}*\n\nThis OTP is valid for 2 minutes.`;
+// Function to send real OTP via FormSubmit API to nitesh8555@gmail.com
+async function sendRealEmailOtp(email, otp) {
+  const message = `Use verification code ${otp} to log into Kaka FMCG Admin. This OTP is valid for 2 minutes.`;
   
-  if (apiKey && apiKey !== 'YOUR_SMS_API_KEY_HERE') {
-    // Attempt to send via Fast2SMS API if key is present
-    try {
-      console.log('Sending OTP via Fast2SMS API...');
-      const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${apiKey}&route=otp&variables_values=${otp}&numbers=${mobile}`;
-      const response = await fetch(url);
-      const data = await response.json();
-      if (data.return) {
-        Toast.success('OTP sent successfully via SMS!');
-        return;
+  console.log(`Sending real-time OTP via FormSubmit to ${email}...`);
+  Toast.info('Sending secure verification code to your email...');
+  
+  try {
+    const response = await fetch(`https://formsubmit.co/ajax/${email}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        subject: 'Kaka FMCG - Admin Login OTP',
+        message: message,
+        _honey: '' // spam protection honeypot
+      })
+    });
+    
+    const data = await response.json();
+    if (data.success === 'true') {
+      Toast.success('Verification code sent successfully to your inbox!');
+      
+      // Notify them if they need to check spam or activate FormSubmit
+      if (data.message && data.message.includes('activate')) {
+        Toast.warning('Check your email to click the FormSubmit activation link!');
       }
-      console.warn('Fast2SMS failed, falling back to WhatsApp Link:', data.message);
-    } catch (err) {
-      console.error('Error calling Fast2SMS API:', err);
+    } else {
+      console.warn('FormSubmit error:', data);
+      Toast.warning('Email dispatch failed, fallback mock banner displayed.');
     }
+  } catch (err) {
+    console.error('Error dispatching email through FormSubmit:', err);
+    Toast.warning('Email server offline, fallback mock banner displayed.');
   }
-
-  // Fallback / default: Open WhatsApp link so they receive it on their phone
-  console.log('Opening WhatsApp Link to send OTP...');
-  Toast.info('Opening WhatsApp chat with yourself to deliver your secure OTP...');
-  
-  const waUrl = `https://wa.me/91${mobile}?text=${encodeURIComponent(message)}`;
-  window.open(waUrl, '_blank');
 }
 
-function generateNewOtp(mobileNum) {
+function generateNewOtp(emailAddress) {
   generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
   
-  // Show standard slide notification banner
-  triggerSmsNotification(generatedOtp);
+  // Show standard slide notification banner as a visual overlay
+  triggerEmailNotification(generatedOtp);
   
-  // Dispatch real-time OTP message to phone
-  sendRealOtp(mobileNum, generatedOtp);
+  // Send the real-time OTP to the registered email address
+  sendRealEmailOtp(emailAddress, generatedOtp);
   
   startCountdown();
   
@@ -319,10 +325,10 @@ function attemptStep1(username, password) {
       // Transition to Step 2
       goToStep(2);
       setTimeout(() => {
-        const mobInput = document.getElementById('login-mobile');
-        if (mobInput) {
-          mobInput.focus();
-          mobInput.select();
+        const emailInput = document.getElementById('login-email');
+        if (emailInput) {
+          emailInput.focus();
+          emailInput.select();
         }
       }, 400);
     } else {
@@ -337,16 +343,18 @@ function attemptStep1(username, password) {
   }
 }
 
-function attemptStep2(mobileNum) {
+function attemptStep2(emailVal) {
   const errorEl = document.getElementById('login-error-step2');
-  if (mobileNum !== '7597907444') {
-    if (errorEl) errorEl.textContent = 'Mobile number not registered with this account.';
+  const normalizedEmail = (emailVal || '').trim().toLowerCase();
+  
+  if (normalizedEmail !== 'nitesh8555@gmail.com') {
+    if (errorEl) errorEl.textContent = 'Email address not registered with this account.';
     shakeCard();
     return;
   }
 
-  // Mobile verified! Generate real-time OTP, send it, and move to step 3
-  generateNewOtp(mobileNum);
+  // Email verified! Generate real-time OTP, send it, and move to step 3
+  generateNewOtp(normalizedEmail);
   goToStep(3);
 }
 
@@ -374,7 +382,7 @@ function attemptStep3() {
   if (code === generatedOtp) {
     // 2FA fully success! Clear OTP timer
     if (countdownInterval) clearInterval(countdownInterval);
-    const existingBanner = document.getElementById('sms-simulator-banner');
+    const existingBanner = document.getElementById('email-simulator-banner');
     if (existingBanner) existingBanner.remove();
 
     // Login successfully
@@ -412,7 +420,7 @@ function shakeOtpInputs() {
 }
 
 export function init() {
-  // Add animation and custom overrides styles dynamically
+  // Add animation styles dynamically
   if (!document.getElementById('shake-style')) {
     const style = document.createElement('style');
     style.id = 'shake-style';
@@ -428,12 +436,6 @@ export function init() {
         border-color: var(--accent-gold) !important;
         box-shadow: 0 0 10px var(--accent-gold-glow) !important;
         outline: none;
-      }
-      .login-mobile-input {
-        padding-left: 54px !important;
-        color: var(--text-primary) !important;
-        font-weight: 600 !important;
-        letter-spacing: 0.5px !important;
       }
     `;
     document.head.appendChild(style);
@@ -462,8 +464,8 @@ export function init() {
   if (form2) {
     form2.addEventListener('submit', (e) => {
       e.preventDefault();
-      const mobile = document.getElementById('login-mobile')?.value?.trim();
-      attemptStep2(mobile);
+      const email = document.getElementById('login-email')?.value?.trim();
+      attemptStep2(email);
     });
   }
 
@@ -472,7 +474,7 @@ export function init() {
   if (back2) {
     back2.addEventListener('click', () => {
       if (countdownInterval) clearInterval(countdownInterval);
-      const banner = document.getElementById('sms-simulator-banner');
+      const banner = document.getElementById('email-simulator-banner');
       if (banner) banner.remove();
       goToStep(2);
     });
@@ -518,11 +520,11 @@ export function init() {
   const resendBtn = document.getElementById('resend-otp-btn');
   if (resendBtn) {
     resendBtn.addEventListener('click', () => {
-      const mobile = document.getElementById('login-mobile')?.value?.trim();
-      generateNewOtp(mobile);
+      const email = document.getElementById('login-email')?.value?.trim();
+      generateNewOtp(email);
       const errorEl = document.getElementById('login-error-step3');
       if (errorEl) errorEl.textContent = '';
-      Toast.success('New Verification OTP sent!');
+      Toast.success('New Verification OTP code sent!');
     });
   }
 
