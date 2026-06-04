@@ -29,12 +29,12 @@ export function render() {
             <p>Distribution Management System</p>
           </div>
 
-          <!-- Multi-Step Sliding Wrapper -->
-          <div class="login-steps-container" style="overflow: hidden; width: 100%; box-sizing: border-box;">
-            <div class="login-steps-wrapper" id="login-steps-wrapper" style="display: flex; width: 100%; transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1); box-sizing: border-box;">
+          <!-- Multi-Step Container -->
+          <div class="login-steps-container" style="width: 100%; box-sizing: border-box;">
+            <div class="login-steps-wrapper" id="login-steps-wrapper" style="width: 100%; box-sizing: border-box;">
               
               <!-- STEP 1: Credentials Form -->
-              <div class="login-step">
+              <div class="login-step active">
                 <form id="login-form-step1" style="display:flex; flex-direction:column; gap:16px;">
                   <div style="text-align: center; margin-bottom: 4px;">
                     <span class="badge badge-info" style="font-size: 0.72rem; padding: 3px 8px; text-transform: uppercase;">Step 1: Credentials</span>
@@ -150,11 +150,14 @@ export function render() {
 
 function goToStep(step) {
   currentStep = step;
-  const wrapper = document.getElementById('login-steps-wrapper');
-  if (wrapper) {
-    const shift = (step - 1) * -100;
-    wrapper.style.transform = `translateX(${shift}%)`;
-  }
+  const steps = document.querySelectorAll('.login-step');
+  steps.forEach((stepEl, idx) => {
+    if (idx === step - 1) {
+      stepEl.classList.add('active');
+    } else {
+      stepEl.classList.remove('active');
+    }
+  });
 }
 
 function triggerEmailNotification(otp) {
@@ -432,11 +435,19 @@ export function init() {
         60% { transform: translateX(-6px); }
         80% { transform: translateX(6px); }
       }
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(8px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
       .login-step {
-        flex: 0 0 100% !important;
         width: 100% !important;
         box-sizing: border-box !important;
-        padding: 0 12px !important;
+        padding: 0 !important;
+        display: none;
+      }
+      .login-step.active {
+        display: block !important;
+        animation: fadeIn 0.3s ease-out forwards;
       }
       .login-steps-wrapper {
         box-sizing: border-box !important;
