@@ -874,7 +874,7 @@ function authenticate(username, password) {
 
   // Check admin
   if (u === 'kaka' && p === 'Kaka@123') {
-    return { role: 'admin', user: { name: 'Kaka', id: 'admin' } };
+    return { role: 'admin', requires2fa: true, user: { name: 'Kaka', id: 'admin' } };
   }
 
   // Check staff
