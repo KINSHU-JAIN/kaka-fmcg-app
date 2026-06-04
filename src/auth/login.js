@@ -36,9 +36,6 @@ export function render() {
               <!-- STEP 1: Credentials Form -->
               <div class="login-step active">
                 <form id="login-form-step1" style="display:flex; flex-direction:column; gap:16px;">
-                  <div style="text-align: center; margin-bottom: 4px;">
-                    <span class="badge badge-info" style="font-size: 0.72rem; padding: 3px 8px; text-transform: uppercase;">Step 1: Credentials</span>
-                  </div>
                   
                   <div class="form-group" style="margin-bottom: 0;">
                     <label class="form-label" for="login-username">Username</label>
@@ -62,9 +59,6 @@ export function render() {
               <!-- STEP 2: Email Verification -->
               <div class="login-step">
                 <form id="login-form-step2" style="display:flex; flex-direction:column; gap:16px;">
-                  <div style="text-align: center; margin-bottom: 4px;">
-                    <span class="badge badge-warning" style="font-size: 0.72rem; padding: 3px 8px; text-transform: uppercase;">Step 2: 2-Step Verification</span>
-                  </div>
                   
                   <div style="text-align: center; margin-bottom: 8px;">
                     <h3 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 6px; color: var(--text-primary);">Verify Email Address</h3>
@@ -92,9 +86,6 @@ export function render() {
               <!-- STEP 3: OTP Code Entry -->
               <div class="login-step">
                 <form id="login-form-step3" style="display:flex; flex-direction:column; gap:16px;">
-                  <div style="text-align: center; margin-bottom: 4px;">
-                    <span class="badge badge-success" style="font-size: 0.72rem; padding: 3px 8px; text-transform: uppercase;">Step 3: Enter OTP</span>
-                  </div>
 
                   <div style="text-align: center; margin-bottom: 8px;">
                     <h3 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 6px; color: var(--text-primary);">Enter Verification Code</h3>
@@ -160,71 +151,7 @@ function goToStep(step) {
   });
 }
 
-function triggerEmailNotification(otp) {
-  // Clear any existing banners
-  const existing = document.getElementById('email-simulator-banner');
-  if (existing) existing.remove();
 
-  // Create sliding banner
-  const banner = document.createElement('div');
-  banner.id = 'email-simulator-banner';
-  banner.style.cssText = `
-    position: fixed;
-    top: -120px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 90%;
-    max-width: 420px;
-    background: rgba(15, 23, 42, 0.95);
-    backdrop-filter: blur(8px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: var(--radius-lg);
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-    padding: 16px;
-    z-index: 10000;
-    transition: top 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    display: flex;
-    gap: 12px;
-    color: #ffffff;
-    cursor: pointer;
-  `;
-
-  banner.innerHTML = `
-    <div style="background: var(--info); width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-      <span class="material-icons-round" style="font-size: 22px; color: white;">mail</span>
-    </div>
-    <div style="flex: 1; font-family: var(--font-body);">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-        <span style="font-weight: 700; font-size: 0.82rem; letter-spacing: 0.5px; color: var(--accent-gold);">KAKA-MAIL (Secure OTP)</span>
-        <span style="font-size: 0.65rem; color: var(--text-dim);">now</span>
-      </div>
-      <p style="font-size: 0.78rem; line-height: 1.4; margin: 0; color: #f1f5f9;">
-        Verification Code for Admin: <strong style="font-size: 0.92rem; color: #ffffff; background: rgba(255,255,255,0.15); padding: 1px 6px; border-radius: 4px; border: 1px dashed rgba(255,255,255,0.3); font-family: monospace;">${otp}</strong>. Valid for 2 mins.
-      </p>
-    </div>
-  `;
-
-  document.body.appendChild(banner);
-
-  // Trigger slide down
-  setTimeout(() => {
-    banner.style.top = '20px';
-  }, 100);
-
-  // Dismiss on click
-  banner.addEventListener('click', () => {
-    banner.style.top = '-120px';
-    setTimeout(() => banner.remove(), 500);
-  });
-
-  // Auto dismiss after 15 seconds
-  setTimeout(() => {
-    if (document.body.contains(banner)) {
-      banner.style.top = '-120px';
-      setTimeout(() => banner.remove(), 500);
-    }
-  }, 15000);
-}
 
 function startCountdown() {
   if (countdownInterval) clearInterval(countdownInterval);
@@ -299,9 +226,6 @@ async function sendRealEmailOtp(email, otp) {
 
 function generateNewOtp(emailAddress) {
   generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
-  
-  // Show standard slide notification banner as a visual overlay
-  triggerEmailNotification(generatedOtp);
   
   // Send the real-time OTP to the registered email address
   sendRealEmailOtp(emailAddress, generatedOtp);
@@ -385,8 +309,6 @@ function attemptStep3() {
   if (code === generatedOtp) {
     // 2FA fully success! Clear OTP timer
     if (countdownInterval) clearInterval(countdownInterval);
-    const existingBanner = document.getElementById('email-simulator-banner');
-    if (existingBanner) existingBanner.remove();
 
     // Login successfully
     Store.setSession(adminSessionData);
@@ -507,8 +429,6 @@ export function init() {
   if (back2) {
     back2.addEventListener('click', () => {
       if (countdownInterval) clearInterval(countdownInterval);
-      const banner = document.getElementById('email-simulator-banner');
-      if (banner) banner.remove();
       goToStep(2);
     });
   }
