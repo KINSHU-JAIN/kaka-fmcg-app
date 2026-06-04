@@ -118,15 +118,25 @@ create table staff_locations (
 );
 
 -- Enable Realtime for all tables to support instant sync
-alter publish replication_group_realtime add table firms;
-alter publish replication_group_realtime add table companies;
-alter publish replication_group_realtime add table products;
-alter publish replication_group_realtime add table shops;
-alter publish replication_group_realtime add table staff;
-alter publish replication_group_realtime add table orders;
-alter publish replication_group_realtime add table routes;
-alter publish replication_group_realtime add table ledgers;
-alter publish replication_group_realtime add table staff_locations;
+begin;
+  -- Create supabase_realtime publication if it doesn't exist
+  do $$
+  begin
+    if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+      create publication supabase_realtime;
+    end if;
+  end $$;
+commit;
+
+alter publication supabase_realtime add table firms;
+alter publication supabase_realtime add table companies;
+alter publication supabase_realtime add table products;
+alter publication supabase_realtime add table shops;
+alter publication supabase_realtime add table staff;
+alter publication supabase_realtime add table orders;
+alter publication supabase_realtime add table routes;
+alter publication supabase_realtime add table ledgers;
+alter publication supabase_realtime add table staff_locations;
 
 -- SEED DATA
 
