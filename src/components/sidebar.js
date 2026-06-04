@@ -27,6 +27,7 @@ const staffMenuItems = [
     { id: 'new-order', label: 'New Order', icon: 'add_shopping_cart', hash: '#/staff/new-order' },
     { id: 'history', label: 'Order History', icon: 'history', hash: '#/staff/history' },
     { id: 'deliveries', label: 'Deliveries', icon: 'local_shipping', hash: '#/staff/deliveries' },
+    { id: 'credit-recovery', label: 'Credit Recovery', icon: 'payments', hash: '#/staff/credit-recovery' },
   ]},
 ];
 

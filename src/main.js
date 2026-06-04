@@ -28,6 +28,7 @@ const modules = {
   '/staff/new-order': () => import('./staff/order.js'),
   '/staff/history': () => import('./staff/history.js'),
   '/staff/deliveries': () => import('./staff/deliveries.js'),
+  '/staff/credit-recovery': () => import('./staff/credit-recovery.js'),
 };
 
 // Page titles
@@ -44,6 +45,7 @@ const pageTitles = {
   '/staff/new-order': { title: 'New Order', subtitle: 'Take a new order', icon: 'add_shopping_cart' },
   '/staff/history': { title: 'Order History', subtitle: 'View past orders', icon: 'history' },
   '/staff/deliveries': { title: 'My Deliveries', subtitle: 'Manage assigned delivery routes', icon: 'local_shipping' },
+  '/staff/credit-recovery': { title: 'Credit Recovery', subtitle: 'Collect payments & settle credit bills route-wise', icon: 'payments' },
 };
 
 const app = document.getElementById('app');
