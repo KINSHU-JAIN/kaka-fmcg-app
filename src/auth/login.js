@@ -15,7 +15,7 @@ export function render() {
   return `
     <div class="login-page" style="overflow: hidden; position: relative;">
       <div class="login-container">
-        <div class="login-card" style="overflow: hidden; position: relative; max-width: 400px; width: 100%;">
+        <div class="login-card" style="overflow: hidden; position: relative; max-width: 400px; width: 100%; box-sizing: border-box;">
           
           <!-- Decorative top firm bar -->
           <div style="height: 4px; width: 100%; background: linear-gradient(135deg, var(--accent-gold), var(--accent-blue)); position: absolute; top: 0; left: 0;"></div>
@@ -30,11 +30,11 @@ export function render() {
           </div>
 
           <!-- Multi-Step Sliding Wrapper -->
-          <div class="login-steps-container" style="overflow: hidden; width: 100%;">
-            <div class="login-steps-wrapper" id="login-steps-wrapper" style="display: flex; width: 300%; transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);">
+          <div class="login-steps-container" style="overflow: hidden; width: 100%; box-sizing: border-box;">
+            <div class="login-steps-wrapper" id="login-steps-wrapper" style="display: flex; width: 100%; transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1); box-sizing: border-box;">
               
               <!-- STEP 1: Credentials Form -->
-              <div class="login-step" style="width: 33.333%; flex-shrink: 0; padding: 0 4px;">
+              <div class="login-step">
                 <form id="login-form-step1" style="display:flex; flex-direction:column; gap:16px;">
                   <div style="text-align: center; margin-bottom: 4px;">
                     <span class="badge badge-info" style="font-size: 0.72rem; padding: 3px 8px; text-transform: uppercase;">Step 1: Credentials</span>
@@ -60,7 +60,7 @@ export function render() {
               </div>
 
               <!-- STEP 2: Email Verification -->
-              <div class="login-step" style="width: 33.333%; flex-shrink: 0; padding: 0 4px;">
+              <div class="login-step">
                 <form id="login-form-step2" style="display:flex; flex-direction:column; gap:16px;">
                   <div style="text-align: center; margin-bottom: 4px;">
                     <span class="badge badge-warning" style="font-size: 0.72rem; padding: 3px 8px; text-transform: uppercase;">Step 2: 2-Step Verification</span>
@@ -90,7 +90,7 @@ export function render() {
               </div>
 
               <!-- STEP 3: OTP Code Entry -->
-              <div class="login-step" style="width: 33.333%; flex-shrink: 0; padding: 0 4px;">
+              <div class="login-step">
                 <form id="login-form-step3" style="display:flex; flex-direction:column; gap:16px;">
                   <div style="text-align: center; margin-bottom: 4px;">
                     <span class="badge badge-success" style="font-size: 0.72rem; padding: 3px 8px; text-transform: uppercase;">Step 3: Enter OTP</span>
@@ -101,14 +101,14 @@ export function render() {
                     <p style="font-size: 0.78rem; color: var(--text-muted); line-height: 1.4;">A 6-digit OTP code has been sent to nitesh8555@gmail.com.</p>
                   </div>
 
-                  <!-- 6 digit code boxes -->
-                  <div style="display: flex; justify-content: space-between; gap: 8px; margin: 8px 0;" class="otp-inputs-group">
-                    <input type="text" class="otp-digit-input" data-index="0" pattern="[0-9]" maxlength="1" required style="width: 45px; height: 50px; text-align: center; font-size: 1.4rem; font-weight: 700; border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); transition: all 0.2s ease;" />
-                    <input type="text" class="otp-digit-input" data-index="1" pattern="[0-9]" maxlength="1" required style="width: 45px; height: 50px; text-align: center; font-size: 1.4rem; font-weight: 700; border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); transition: all 0.2s ease;" />
-                    <input type="text" class="otp-digit-input" data-index="2" pattern="[0-9]" maxlength="1" required style="width: 45px; height: 50px; text-align: center; font-size: 1.4rem; font-weight: 700; border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); transition: all 0.2s ease;" />
-                    <input type="text" class="otp-digit-input" data-index="3" pattern="[0-9]" maxlength="1" required style="width: 45px; height: 50px; text-align: center; font-size: 1.4rem; font-weight: 700; border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); transition: all 0.2s ease;" />
-                    <input type="text" class="otp-digit-input" data-index="4" pattern="[0-9]" maxlength="1" required style="width: 45px; height: 50px; text-align: center; font-size: 1.4rem; font-weight: 700; border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); transition: all 0.2s ease;" />
-                    <input type="text" class="otp-digit-input" data-index="5" pattern="[0-9]" maxlength="1" required style="width: 45px; height: 50px; text-align: center; font-size: 1.4rem; font-weight: 700; border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); transition: all 0.2s ease;" />
+                  <!-- 6 digit code boxes (Optimized sizing & alignment) -->
+                  <div style="display: flex; justify-content: center; gap: 6px; margin: 8px 0;" class="otp-inputs-group">
+                    <input type="text" class="otp-digit-input" data-index="0" pattern="[0-9]" maxlength="1" required />
+                    <input type="text" class="otp-digit-input" data-index="1" pattern="[0-9]" maxlength="1" required />
+                    <input type="text" class="otp-digit-input" data-index="2" pattern="[0-9]" maxlength="1" required />
+                    <input type="text" class="otp-digit-input" data-index="3" pattern="[0-9]" maxlength="1" required />
+                    <input type="text" class="otp-digit-input" data-index="4" pattern="[0-9]" maxlength="1" required />
+                    <input type="text" class="otp-digit-input" data-index="5" pattern="[0-9]" maxlength="1" required />
                   </div>
 
                   <div id="otp-timer-container" style="text-align: center; font-size: 0.8rem; color: var(--text-secondary);">
@@ -152,7 +152,7 @@ function goToStep(step) {
   currentStep = step;
   const wrapper = document.getElementById('login-steps-wrapper');
   if (wrapper) {
-    const shift = (step - 1) * -33.333;
+    const shift = (step - 1) * -100;
     wrapper.style.transform = `translateX(${shift}%)`;
   }
 }
@@ -432,10 +432,32 @@ export function init() {
         60% { transform: translateX(-6px); }
         80% { transform: translateX(6px); }
       }
+      .login-step {
+        flex: 0 0 100% !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        padding: 0 12px !important;
+      }
+      .login-steps-wrapper {
+        box-sizing: border-box !important;
+      }
+      .otp-digit-input {
+        width: 34px !important;
+        height: 44px !important;
+        text-align: center !important;
+        font-size: 1.25rem !important;
+        font-weight: 700 !important;
+        border: 1.5px solid var(--border) !important;
+        border-radius: var(--radius-sm) !important;
+        background: var(--bg-input) !important;
+        color: var(--text-primary) !important;
+        transition: all 0.2s ease !important;
+        box-sizing: border-box !important;
+      }
       .otp-digit-input:focus {
         border-color: var(--accent-gold) !important;
-        box-shadow: 0 0 10px var(--accent-gold-glow) !important;
-        outline: none;
+        box-shadow: 0 0 8px var(--accent-gold-glow) !important;
+        outline: none !important;
       }
     `;
     document.head.appendChild(style);
