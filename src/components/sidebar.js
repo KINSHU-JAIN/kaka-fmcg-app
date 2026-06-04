@@ -12,10 +12,12 @@ const adminMenuItems = [
     { id: 'companies', label: 'Companies', icon: 'business', hash: '#/admin/companies' },
     { id: 'products', label: 'Products', icon: 'inventory_2', hash: '#/admin/products' },
     { id: 'orders', label: 'Orders', icon: 'receipt_long', hash: '#/admin/orders' },
+    { id: 'ledger', label: 'Retailer Ledger', icon: 'menu_book', hash: '#/admin/ledger' },
   ]},
   { section: 'Operations', items: [
     { id: 'routes', label: 'Route Designer', icon: 'route', hash: '#/admin/routes' },
     { id: 'staff', label: 'Staff', icon: 'group', hash: '#/admin/staff' },
+    { id: 'tracking', label: 'Live Tracking', icon: 'satellite_alt', hash: '#/admin/tracking' },
   ]},
 ];
 
@@ -24,6 +26,7 @@ const staffMenuItems = [
     { id: 'shops', label: 'My Shops', icon: 'store', hash: '#/staff/shops' },
     { id: 'new-order', label: 'New Order', icon: 'add_shopping_cart', hash: '#/staff/new-order' },
     { id: 'history', label: 'Order History', icon: 'history', hash: '#/staff/history' },
+    { id: 'deliveries', label: 'Deliveries', icon: 'local_shipping', hash: '#/staff/deliveries' },
   ]},
 ];
 

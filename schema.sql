@@ -4,6 +4,8 @@
 -- ==========================================================================
 
 -- Drop existing tables if any
+drop table if exists ledgers cascade;
+drop table if exists staff_locations cascade;
 drop table if exists orders cascade;
 drop table if exists routes cascade;
 drop table if exists shops cascade;
@@ -95,6 +97,26 @@ create table routes (
     assigned_staff_id text references staff(id) on delete set null
 );
 
+-- 8. Ledgers Table
+create table ledgers (
+    id text primary key,
+    shop_id text references shops(id) on delete cascade,
+    date timestamptz default now(),
+    type text not null,
+    ref_id text references orders(id) on delete set null,
+    description text,
+    amount numeric not null,
+    running_balance numeric not null
+);
+
+-- 9. Staff Locations Table
+create table staff_locations (
+    staff_id text primary key references staff(id) on delete cascade,
+    lat numeric not null,
+    lng numeric not null,
+    updated_at timestamptz default now()
+);
+
 -- Enable Realtime for all tables to support instant sync
 alter publish replication_group_realtime add table firms;
 alter publish replication_group_realtime add table companies;
@@ -103,6 +125,8 @@ alter publish replication_group_realtime add table shops;
 alter publish replication_group_realtime add table staff;
 alter publish replication_group_realtime add table orders;
 alter publish replication_group_realtime add table routes;
+alter publish replication_group_realtime add table ledgers;
+alter publish replication_group_realtime add table staff_locations;
 
 -- SEED DATA
 
@@ -117,25 +141,25 @@ insert into staff (id, name, phone, pin, username, password, is_blocked) values
 
 -- Insert Companies
 insert into companies (id, firm_id, name, icon, is_active) values
-('comp_hul', 'firm_ka', 'Hindustan Unilever (HUL)', '🧴', true),
-('comp_dabur', 'firm_ka', 'Dabur', '🌿', true),
-('comp_reckitt', 'firm_ka', 'Reckitt Benckiser', '🧹', true),
-('comp_cadbury', 'firm_ka', 'Cadbury (Mondelez)', '🍫', true),
-('comp_nestle', 'firm_ka', 'Nestlé', '☕', true),
-('comp_pg', 'firm_ka', 'P&G', '🪥', true),
-('comp_himalaya', 'firm_ka', 'Himalaya', '🏔️', true),
-('comp_scj', 'firm_ka', 'SC Johnson', '🏠', true),
-('comp_godrej', 'firm_ka', 'Godrej', '✨', true),
-('comp_wipro', 'firm_ka', 'Wipro Consumer', '🌸', true),
-('comp_brit', 'firm_ka', 'Britannia', '🍪', true),
-('comp_ferrero', 'firm_ka', 'Ferrero', '🍬', true),
-('comp_vini', 'firm_ka', 'Vini Cosmetics', '💄', true),
-('comp_zydus', 'firm_ka', 'Zydus Wellness', '💊', true),
-('comp_garnier', 'firm_ka', 'Garnier (L''Oréal)', '💆', true),
-('comp_patanjali', 'firm_ka', 'Patanjali', '🧘', true),
-('comp_gsk', 'firm_ka', 'GSK (Haleon)', '💉', true),
-('comp_marico', 'firm_ka', 'Marico', '🥥', true),
-('comp_amul', 'firm_km', 'Amul', '🥛', true);
+('comp_hul', 'firm_ka', 'Hindustan Unilever (HUL)', '/logos/hul.png', true),
+('comp_dabur', 'firm_ka', 'Dabur', '/logos/dabur.png', true),
+('comp_reckitt', 'firm_ka', 'Reckitt Benckiser', '/logos/reckitt.png', true),
+('comp_cadbury', 'firm_ka', 'Cadbury (Mondelez)', '/logos/cadbury.png', true),
+('comp_nestle', 'firm_ka', 'Nestlé', '/logos/nestle.png', true),
+('comp_pg', 'firm_ka', 'P&G', '/logos/pg.png', true),
+('comp_himalaya', 'firm_ka', 'Himalaya', '/logos/himalaya.png', true),
+('comp_scj', 'firm_ka', 'SC Johnson', '/logos/scj.png', true),
+('comp_godrej', 'firm_ka', 'Godrej', '/logos/godrej.png', true),
+('comp_wipro', 'firm_ka', 'Wipro Consumer', '/logos/wipro.png', true),
+('comp_denver', 'firm_ka', 'Denver', '/logos/denver.png', true),
+('comp_ferrero', 'firm_ka', 'Ferrero', '/logos/ferrero.png', true),
+('comp_vini', 'firm_ka', 'Vini Cosmetics', '/logos/vini.png', true),
+('comp_zydus', 'firm_ka', 'Zydus Wellness', '/logos/zydus.png', true),
+('comp_garnier', 'firm_ka', 'Garnier (L''Oréal)', '/logos/garnier.png', true),
+('comp_patanjali', 'firm_ka', 'Patanjali', '/logos/patanjali.png', true),
+('comp_gsk', 'firm_ka', 'GSK (Haleon)', '/logos/gsk.png', true),
+('comp_marico', 'firm_ka', 'Marico', '/logos/marico.png', true),
+('comp_amul', 'firm_km', 'Amul', '/logos/amul.png', true);
 
 -- Insert Products
 insert into products (id, company_id, firm_id, name, mrp, selling_price, unit, stock, is_active, tier_prices) values
@@ -180,10 +204,10 @@ insert into products (id, company_id, firm_id, name, mrp, selling_price, unit, s
 ('p082', 'comp_godrej', 'firm_ka', 'Godrej Expert Hair Colour', 45, 42, 'pack', 200, true, '[]'::jsonb),
 ('p090', 'comp_wipro', 'firm_ka', 'Santoor Sandal Soap 100g (Pack of 4)', 130, 120, 'pack', 300, true, '[]'::jsonb),
 ('p091', 'comp_wipro', 'firm_ka', 'Chandrika Ayurvedic Soap 125g', 40, 37, 'piece', 200, true, '[]'::jsonb),
-('p100', 'comp_brit', 'firm_ka', 'Britannia Good Day 250g', 55, 51, 'pack', 400, true, '[]'::jsonb),
-('p101', 'comp_brit', 'firm_ka', 'Britannia Marie Gold 250g', 35, 33, 'pack', 500, true, '[]'::jsonb),
-('p102', 'comp_brit', 'firm_ka', 'Britannia 50-50 Maska Chaska 120g', 25, 23, 'pack', 400, true, '[]'::jsonb),
-('p103', 'comp_brit', 'firm_ka', 'Britannia Bread (White) 400g', 45, 42, 'piece', 100, true, '[]'::jsonb),
+('p100', 'comp_denver', 'firm_ka', 'Denver Deo Spray Hamilton 150ml', 230, 210, 'can', 150, true, '[]'::jsonb),
+('p101', 'comp_denver', 'firm_ka', 'Denver Deo Spray Imperial 150ml', 230, 210, 'can', 150, true, '[]'::jsonb),
+('p102', 'comp_denver', 'firm_ka', 'Denver Shaving Foam 200g', 150, 135, 'can', 200, true, '[]'::jsonb),
+('p103', 'comp_denver', 'firm_ka', 'Denver Beer Shampoo 200ml', 180, 165, 'bottle', 100, true, '[]'::jsonb),
 ('p110', 'comp_ferrero', 'firm_ka', 'Ferrero Rocher T16', 499, 465, 'box', 50, true, '[]'::jsonb),
 ('p111', 'comp_ferrero', 'firm_ka', 'Nutella 290g', 399, 370, 'jar', 60, true, '[]'::jsonb),
 ('p112', 'comp_ferrero', 'firm_ka', 'Kinder Joy', 50, 47, 'piece', 200, true, '[]'::jsonb),

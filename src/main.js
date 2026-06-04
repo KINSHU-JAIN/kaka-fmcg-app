@@ -21,10 +21,13 @@ const modules = {
   '/admin/orders': () => import('./admin/orders.js'),
   '/admin/routes': () => import('./admin/routes.js'),
   '/admin/staff': () => import('./admin/staff.js'),
+  '/admin/tracking': () => import('./admin/tracking.js'),
+  '/admin/ledger': () => import('./admin/ledger.js'),
   // Staff
   '/staff/shops': () => import('./staff/shops.js'),
   '/staff/new-order': () => import('./staff/order.js'),
   '/staff/history': () => import('./staff/history.js'),
+  '/staff/deliveries': () => import('./staff/deliveries.js'),
 };
 
 // Page titles
@@ -35,9 +38,12 @@ const pageTitles = {
   '/admin/orders': { title: 'Orders', subtitle: 'Track and manage orders', icon: 'receipt_long' },
   '/admin/routes': { title: 'Route Designer', subtitle: 'Design delivery routes', icon: 'route' },
   '/admin/staff': { title: 'Staff Management', subtitle: 'Manage your team', icon: 'group' },
+  '/admin/tracking': { title: 'Staff Tracking', subtitle: 'Live geolocation of delivery personnel', icon: 'satellite_alt' },
+  '/admin/ledger': { title: 'Retailer Ledger', subtitle: 'Khata Book accounts & partial payments', icon: 'menu_book' },
   '/staff/shops': { title: 'My Shops', subtitle: 'View and manage shops', icon: 'store' },
   '/staff/new-order': { title: 'New Order', subtitle: 'Take a new order', icon: 'add_shopping_cart' },
   '/staff/history': { title: 'Order History', subtitle: 'View past orders', icon: 'history' },
+  '/staff/deliveries': { title: 'My Deliveries', subtitle: 'Manage assigned delivery routes', icon: 'local_shipping' },
 };
 
 const app = document.getElementById('app');
@@ -49,7 +55,7 @@ async function navigate() {
   const session = Store.getSession();
 
   // Auth guard
-  if (path !== '/login') {
+  if (path !== '/login' && path !== '/invoice') {
     if (!session) {
       window.location.hash = '#/login';
       return;
@@ -57,6 +63,25 @@ async function navigate() {
     // Role guard
     if (path.startsWith('/admin') && session.role !== 'admin') {
       window.location.hash = '#/staff/shops';
+      return;
+    }
+  }
+
+  // Public invoice viewer (no login required)
+  if (path === '/invoice') {
+    try {
+      const mod = await import('./components/invoice-viewer.js');
+      app.innerHTML = mod.render();
+      if (mod.init) mod.init();
+      return;
+    } catch (err) {
+      console.error('Invoice viewer load error:', err);
+      app.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;flex-direction:column;font-family:sans-serif;">
+          <h2 style="color:var(--text-secondary);">Invoice Error</h2>
+          <p style="color:var(--text-muted);">${err.message}</p>
+        </div>
+      `;
       return;
     }
   }

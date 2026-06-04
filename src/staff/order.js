@@ -48,6 +48,10 @@ function findCartItem(productId) {
 }
 
 function addToCart(product) {
+  if (!selectedShopId) {
+    Toast.error('Please select a shop first');
+    return;
+  }
   const existing = findCartItem(product.id);
   if (existing) {
     existing.qty += 1;
@@ -66,6 +70,10 @@ function addToCart(product) {
 }
 
 function updateCartQty(productId, delta) {
+  if (!selectedShopId) {
+    Toast.error('Please select a shop first');
+    return;
+  }
   const item = findCartItem(productId);
   if (!item) return;
   item.qty += delta;
@@ -230,6 +238,14 @@ function renderShopSelector() {
     </div>`;
 }
 
+function renderCompanyIcon(icon, size = '16px') {
+  if (!icon) return '';
+  if (icon.startsWith('/') || icon.startsWith('http')) {
+    return `<img src="${icon}" style="width:${size}; height:${size}; object-fit:contain; vertical-align:middle; border-radius:3px; background:white; padding:1px; border:1px solid var(--border-light); margin-right:4px;" />`;
+  }
+  return icon + ' ';
+}
+
 function renderCompanyChips() {
   const companies = Store.getCompanies(firmId());
 
@@ -237,8 +253,8 @@ function renderCompanyChips() {
     <div class="chips-row" style="margin-bottom:16px;">
       <button class="chip ${!selectedCompanyId ? 'active' : ''}" data-company-id="">All Companies</button>
       ${companies.map(c => `
-        <button class="chip ${selectedCompanyId === c.id ? 'active' : ''}" data-company-id="${c.id}">
-          ${c.icon || ''} ${c.name}
+        <button class="chip ${selectedCompanyId === c.id ? 'active' : ''}" data-company-id="${c.id}" style="display:inline-flex; align-items:center; gap:4px;">
+          ${renderCompanyIcon(c.icon, '16px')}${c.name}
         </button>
       `).join('')}
     </div>`;
@@ -517,7 +533,14 @@ export function init() {
   const shopSelect = document.getElementById('order-shop-select');
   if (shopSelect) {
     shopSelect.addEventListener('change', () => {
-      selectedShopId = shopSelect.value || null;
+      const newShopId = shopSelect.value || null;
+      if (newShopId !== selectedShopId) {
+        if (cart.length > 0) {
+          Toast.info('Cart cleared due to shop change');
+        }
+        cart = [];
+        selectedShopId = newShopId;
+      }
       // Update warning container
       const warningContainer = document.getElementById('outstanding-warning-container');
       if (warningContainer) {
@@ -582,6 +605,10 @@ function bindProductButtons() {
   // Add to cart
   document.querySelectorAll('.product-add-btn').forEach(btn => {
     btn.addEventListener('click', () => {
+      if (!selectedShopId) {
+        Toast.error('Please select a shop first');
+        return;
+      }
       const productId = btn.dataset.productId;
       const product = Store.getProductById(productId);
       if (!product) return;
@@ -593,6 +620,10 @@ function bindProductButtons() {
   // Qty controls in product grid
   document.querySelectorAll('.product-qty-btn').forEach(btn => {
     btn.addEventListener('click', () => {
+      if (!selectedShopId) {
+        Toast.error('Please select a shop first');
+        return;
+      }
       const productId = btn.dataset.productId;
       const delta = parseInt(btn.dataset.delta, 10);
       updateCartQty(productId, delta);
@@ -652,11 +683,6 @@ function renderOrderOverviewHtml(shop, items, total, notes) {
     </tr>
   `).join('');
 
-  const upiId = currentFirm.id === 'firm_km' ? 'kakamarketing@upi' : 'kakaagencies@upi';
-  const upiName = encodeURIComponent(currentFirm.name);
-  const upiUri = `upi://pay?pa=${upiId}&pn=${upiName}&am=${total}&cu=INR&tn=Kaka%20Order`;
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(upiUri)}`;
-
   return `
     <div style="display:flex; flex-direction:column; gap:16px;">
       <div style="background:var(--bg-base); padding:12px; border-radius:var(--radius-md); border:1px solid var(--border);">
@@ -686,32 +712,6 @@ function renderOrderOverviewHtml(shop, items, total, notes) {
       </div>
 
       ${notes ? `<div style="font-size:0.8rem; padding:8px 12px; background:var(--bg-base); border-radius:var(--radius-md); border:1px solid var(--border); color:var(--text-secondary);"><strong>Remarks:</strong> ${notes}</div>` : ''}
-
-      <div>
-        <label class="form-label" style="margin-bottom:6px;">Payment / Collection Method</label>
-        <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;" id="payment-mode-tabs">
-          <button class="btn btn-secondary payment-tab" data-mode="credit" style="padding:10px 4px; display:flex; flex-direction:column; gap:4px; font-size:0.75rem;">
-            <span class="material-icons-round" style="color:var(--accent-gold); font-size:18px;">hourglass_empty</span>
-            On Credit
-          </button>
-          <button class="btn btn-secondary payment-tab active" data-mode="cash" style="padding:10px 4px; display:flex; flex-direction:column; gap:4px; font-size:0.75rem;">
-            <span class="material-icons-round" style="color:var(--success); font-size:18px;">payments</span>
-            Cash
-          </button>
-          <button class="btn btn-secondary payment-tab" data-mode="upi" style="padding:10px 4px; display:flex; flex-direction:column; gap:4px; font-size:0.75rem;">
-            <span class="material-icons-round" style="color:var(--accent-blue); font-size:18px;">qr_code_2</span>
-            UPI / QR
-          </button>
-        </div>
-      </div>
-
-      <div id="upi-qr-panel" style="display:none; flex-direction:column; align-items:center; gap:8px; background:var(--bg-base); padding:16px; border-radius:var(--radius-md); border:1px solid var(--border);">
-        <div style="font-weight:600; font-size:0.85rem; color:var(--text-primary);">Scan QR to Pay: ₹${total.toLocaleString('en-IN')}</div>
-        <div style="background:white; padding:8px; border-radius:8px; border:1px solid var(--border);">
-          <img src="${qrUrl}" style="width:160px; height:160px; display:block;" alt="UPI QR" />
-        </div>
-        <div style="font-size:0.72rem; color:var(--text-muted); text-align:center;">UPI ID: ${upiId}</div>
-      </div>
 
       <div style="display:flex; gap:12px; margin-top:8px;">
         <button class="btn btn-secondary" style="flex:1;" id="back-to-edit-btn">Edit Cart</button>
@@ -756,59 +756,6 @@ async function handlePlaceOrder() {
     hideFooter: true
   });
 
-  let activeMode = 'cash';
-  let previousMode = 'cash';
-
-  // Toggle payment modes
-  const tabs = document.querySelectorAll('#payment-mode-tabs .payment-tab');
-  const qrPanel = document.getElementById('upi-qr-panel');
-
-  tabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      const mode = tab.dataset.mode;
-      
-      if (mode === 'credit') {
-        showCreditPolicyPopup(
-          // On Agree:
-          () => {
-            tabs.forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-            activeMode = 'credit';
-            previousMode = 'credit';
-            qrPanel.style.display = 'none';
-          },
-          // On Cancel/Revert:
-          () => {
-            tabs.forEach(t => {
-              if (t.dataset.mode === previousMode) {
-                t.classList.add('active');
-              } else {
-                t.classList.remove('active');
-              }
-            });
-            activeMode = previousMode;
-            if (activeMode === 'upi') {
-              qrPanel.style.display = 'flex';
-            } else {
-              qrPanel.style.display = 'none';
-            }
-          }
-        );
-      } else {
-        tabs.forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
-        activeMode = mode;
-        previousMode = mode;
-
-        if (activeMode === 'upi') {
-          qrPanel.style.display = 'flex';
-        } else {
-          qrPanel.style.display = 'none';
-        }
-      }
-    });
-  });
-
   // Back button
   const backBtn = document.getElementById('back-to-edit-btn');
   if (backBtn) {
@@ -821,8 +768,7 @@ async function handlePlaceOrder() {
   const confirmBtn = document.getElementById('final-confirm-btn');
   if (confirmBtn) {
     confirmBtn.addEventListener('click', () => {
-      const paymentStatus = activeMode === 'credit' ? 'unpaid' : 'paid';
-      submitOrder(activeMode, paymentStatus, shop, items, total, notes, session);
+      submitOrder('credit', 'unpaid', shop, items, total, notes, session);
     });
   }
 }

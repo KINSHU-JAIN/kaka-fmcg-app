@@ -33,27 +33,27 @@ export function getSeedData() {
 
     companies: [
       // === KAKA AGENCIES (18 brands) ===
-      { id: 'comp_hul',     firmId: 'firm_ka', name: 'Hindustan Unilever (HUL)', icon: '🧴', isActive: true },
-      { id: 'comp_dabur',   firmId: 'firm_ka', name: 'Dabur',                    icon: '🌿', isActive: true },
-      { id: 'comp_reckitt', firmId: 'firm_ka', name: 'Reckitt Benckiser',        icon: '🧹', isActive: true },
-      { id: 'comp_cadbury', firmId: 'firm_ka', name: 'Cadbury (Mondelez)',        icon: '🍫', isActive: true },
-      { id: 'comp_nestle',  firmId: 'firm_ka', name: 'Nestlé',                   icon: '☕', isActive: true },
-      { id: 'comp_pg',      firmId: 'firm_ka', name: 'P&G',                      icon: '🪥', isActive: true },
-      { id: 'comp_himalaya',firmId: 'firm_ka', name: 'Himalaya',                 icon: '🏔️', isActive: true },
-      { id: 'comp_scj',     firmId: 'firm_ka', name: 'SC Johnson',               icon: '🏠', isActive: true },
-      { id: 'comp_godrej',  firmId: 'firm_ka', name: 'Godrej',                   icon: '✨', isActive: true },
-      { id: 'comp_wipro',   firmId: 'firm_ka', name: 'Wipro Consumer',           icon: '🌸', isActive: true },
-      { id: 'comp_brit',    firmId: 'firm_ka', name: 'Britannia',                icon: '🍪', isActive: true },
-      { id: 'comp_ferrero', firmId: 'firm_ka', name: 'Ferrero',                  icon: '🍬', isActive: true },
-      { id: 'comp_vini',    firmId: 'firm_ka', name: 'Vini Cosmetics',           icon: '💄', isActive: true },
-      { id: 'comp_zydus',   firmId: 'firm_ka', name: 'Zydus Wellness',           icon: '💊', isActive: true },
-      { id: 'comp_garnier', firmId: 'firm_ka', name: 'Garnier (L\'Oréal)',       icon: '💆', isActive: true },
-      { id: 'comp_patanjali',firmId:'firm_ka', name: 'Patanjali',                icon: '🧘', isActive: true },
-      { id: 'comp_gsk',     firmId: 'firm_ka', name: 'GSK (Haleon)',             icon: '💉', isActive: true },
-      { id: 'comp_marico',  firmId: 'firm_ka', name: 'Marico',                   icon: '🥥', isActive: true },
+      { id: 'comp_hul',     firmId: 'firm_ka', name: 'Hindustan Unilever (HUL)', icon: '/logos/hul.png', isActive: true },
+      { id: 'comp_dabur',   firmId: 'firm_ka', name: 'Dabur',                    icon: '/logos/dabur.png', isActive: true },
+      { id: 'comp_reckitt', firmId: 'firm_ka', name: 'Reckitt Benckiser',        icon: '/logos/reckitt.png', isActive: true },
+      { id: 'comp_cadbury', firmId: 'firm_ka', name: 'Cadbury (Mondelez)',        icon: '/logos/cadbury.png', isActive: true },
+      { id: 'comp_nestle',  firmId: 'firm_ka', name: 'Nestlé',                   icon: '/logos/nestle.png', isActive: true },
+      { id: 'comp_pg',      firmId: 'firm_ka', name: 'P&G',                      icon: '/logos/pg.png', isActive: true },
+      { id: 'comp_himalaya',firmId: 'firm_ka', name: 'Himalaya',                 icon: '/logos/himalaya.png', isActive: true },
+      { id: 'comp_scj',     firmId: 'firm_ka', name: 'SC Johnson',               icon: '/logos/scj.png', isActive: true },
+      { id: 'comp_godrej',  firmId: 'firm_ka', name: 'Godrej',                   icon: '/logos/godrej.png', isActive: true },
+      { id: 'comp_wipro',   firmId: 'firm_ka', name: 'Wipro Consumer',           icon: '/logos/wipro.png', isActive: true },
+      { id: 'comp_denver',  firmId: 'firm_ka', name: 'Denver',                   icon: '/logos/denver.png', isActive: true },
+      { id: 'comp_ferrero', firmId: 'firm_ka', name: 'Ferrero',                  icon: '/logos/ferrero.png', isActive: true },
+      { id: 'comp_vini',    firmId: 'firm_ka', name: 'Vini Cosmetics',           icon: '/logos/vini.png', isActive: true },
+      { id: 'comp_zydus',   firmId: 'firm_ka', name: 'Zydus Wellness',           icon: '/logos/zydus.png', isActive: true },
+      { id: 'comp_garnier', firmId: 'firm_ka', name: 'Garnier (L\'Oréal)',       icon: '/logos/garnier.png', isActive: true },
+      { id: 'comp_patanjali',firmId:'firm_ka', name: 'Patanjali',                icon: '/logos/patanjali.png', isActive: true },
+      { id: 'comp_gsk',     firmId: 'firm_ka', name: 'GSK (Haleon)',             icon: '/logos/gsk.png', isActive: true },
+      { id: 'comp_marico',  firmId: 'firm_ka', name: 'Marico',                   icon: '/logos/marico.png', isActive: true },
 
       // === KAKA MARKETING (1 brand) ===
-      { id: 'comp_amul',    firmId: 'firm_km', name: 'Amul',                     icon: '🥛', isActive: true },
+      { id: 'comp_amul',    firmId: 'firm_km', name: 'Amul',                     icon: '/logos/amul.png', isActive: true },
     ],
 
     products: [
@@ -118,11 +118,11 @@ export function getSeedData() {
       { id: 'p090', companyId: 'comp_wipro', firmId: 'firm_ka', name: 'Santoor Sandal Soap 100g (Pack of 4)', mrp: 130, sellingPrice: 120, unit: 'pack', stock: 300, isActive: true },
       { id: 'p091', companyId: 'comp_wipro', firmId: 'firm_ka', name: 'Chandrika Ayurvedic Soap 125g', mrp: 40, sellingPrice: 37, unit: 'piece', stock: 200, isActive: true },
 
-      // --- Britannia Products ---
-      { id: 'p100', companyId: 'comp_brit', firmId: 'firm_ka', name: 'Britannia Good Day 250g', mrp: 55, sellingPrice: 51, unit: 'pack', stock: 400, isActive: true },
-      { id: 'p101', companyId: 'comp_brit', firmId: 'firm_ka', name: 'Britannia Marie Gold 250g', mrp: 35, sellingPrice: 33, unit: 'pack', stock: 500, isActive: true },
-      { id: 'p102', companyId: 'comp_brit', firmId: 'firm_ka', name: 'Britannia 50-50 Maska Chaska 120g', mrp: 25, sellingPrice: 23, unit: 'pack', stock: 400, isActive: true },
-      { id: 'p103', companyId: 'comp_brit', firmId: 'firm_ka', name: 'Britannia Bread (White) 400g', mrp: 45, sellingPrice: 42, unit: 'piece', stock: 100, isActive: true },
+      // --- Denver Products ---
+      { id: 'p100', companyId: 'comp_denver', firmId: 'firm_ka', name: 'Denver Deo Spray Hamilton 150ml', mrp: 230, sellingPrice: 210, unit: 'can', stock: 150, isActive: true },
+      { id: 'p101', companyId: 'comp_denver', firmId: 'firm_ka', name: 'Denver Deo Spray Imperial 150ml', mrp: 230, sellingPrice: 210, unit: 'can', stock: 150, isActive: true },
+      { id: 'p102', companyId: 'comp_denver', firmId: 'firm_ka', name: 'Denver Shaving Foam 200g', mrp: 150, sellingPrice: 135, unit: 'can', stock: 200, isActive: true },
+      { id: 'p103', companyId: 'comp_denver', firmId: 'firm_ka', name: 'Denver Beer Shampoo 200ml', mrp: 180, sellingPrice: 165, unit: 'bottle', stock: 100, isActive: true },
 
       // --- Ferrero Products ---
       { id: 'p110', companyId: 'comp_ferrero', firmId: 'firm_ka', name: 'Ferrero Rocher T16', mrp: 499, sellingPrice: 465, unit: 'box', stock: 50, isActive: true },

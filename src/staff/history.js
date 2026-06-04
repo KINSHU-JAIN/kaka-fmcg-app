@@ -5,7 +5,7 @@
 import { Store } from '../data/store.js';
 import { Toast } from '../components/toast.js';
 import { Modal } from '../components/modal.js';
-import { printInvoice } from '../components/invoice.js';
+import { printInvoice, getWhatsAppShareUrl } from '../components/invoice.js';
 
 // ---------- State ----------
 let activeFilter = 'all'; // 'all', 'pending', 'confirmed', 'delivered'
@@ -23,9 +23,9 @@ function staffId() {
 
 function statusBadge(status) {
   const map = {
-    pending:   { cls: 'badge-warning', label: 'Pending', icon: 'schedule' },
-    confirmed: { cls: 'badge-info',    label: 'Confirmed', icon: 'check' },
-    delivered: { cls: 'badge-success', label: 'Delivered', icon: 'local_shipping' },
+    pending:   { cls: 'badge-warning', label: 'Pending Approval', icon: 'schedule' },
+    confirmed: { cls: 'badge-info',    label: 'Ready for Delivery', icon: 'local_shipping' },
+    delivered: { cls: 'badge-success', label: 'Delivered', icon: 'check_circle' },
     cancelled: { cls: 'badge-danger',  label: 'Cancelled', icon: 'cancel' }
   };
   const s = map[status] || { cls: 'badge-neutral', label: status, icon: 'help' };
@@ -191,15 +191,21 @@ function renderOrderDetail(order) {
       </div>
 
       <!-- Action Buttons -->
-      <div style="display:flex; gap:12px; margin-top:16px;">
-        <button class="btn btn-secondary" style="flex:1; display:flex; align-items:center; justify-content:center; gap:8px;" id="print-invoice-btn" data-order-id="${order.id}">
-          <span class="material-icons-round">print</span>
-          Print Invoice
-        </button>
-        <button class="btn btn-primary" style="flex:1; display:flex; align-items:center; justify-content:center; gap:8px;" id="reorder-btn" data-order-id="${order.id}">
-          <span class="material-icons-round">replay</span>
-          Reorder
-        </button>
+      <div style="display:flex; flex-direction:column; gap:10px; margin-top:16px;">
+        <div style="display:flex; gap:12px;">
+          <button class="btn btn-secondary" style="flex:1; display:flex; align-items:center; justify-content:center; gap:8px;" id="print-invoice-btn" data-order-id="${order.id}">
+            <span class="material-icons-round">print</span>
+            Print Invoice
+          </button>
+          <button class="btn btn-primary" style="flex:1; display:flex; align-items:center; justify-content:center; gap:8px;" id="reorder-btn" data-order-id="${order.id}">
+            <span class="material-icons-round">replay</span>
+            Reorder
+          </button>
+        </div>
+        <a href="${getWhatsAppShareUrl(order)}" target="_blank" class="btn btn-primary" style="display:flex; align-items:center; justify-content:center; gap:8px; background-color:#25d366; border-color:#25d366; color:white; text-decoration:none;" id="share-whatsapp-btn">
+          <span class="material-icons-round">share</span>
+          Share Invoice on WhatsApp
+        </a>
       </div>
     </div>`;
 }
@@ -227,16 +233,15 @@ export function render() {
     </div>
 
     <div class="page-body">
-      <!-- Status Tabs -->
       <div class="tabs" style="margin-bottom:20px;" id="status-tabs">
         <button class="tab ${activeFilter === 'all' ? 'active' : ''}" data-filter="all">
           All (${counts.all})
         </button>
         <button class="tab ${activeFilter === 'pending' ? 'active' : ''}" data-filter="pending">
-          Pending (${counts.pending})
+          Pending Approval (${counts.pending})
         </button>
         <button class="tab ${activeFilter === 'confirmed' ? 'active' : ''}" data-filter="confirmed">
-          Confirmed (${counts.confirmed})
+          Ready to Deliver (${counts.confirmed})
         </button>
         <button class="tab ${activeFilter === 'delivered' ? 'active' : ''}" data-filter="delivered">
           Delivered (${counts.delivered})

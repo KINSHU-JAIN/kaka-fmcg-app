@@ -5,7 +5,7 @@
 import { Store } from '../data/store.js';
 import { Toast } from '../components/toast.js';
 import { Modal } from '../components/modal.js';
-import { printInvoice } from '../components/invoice.js';
+import { printInvoice, getWhatsAppShareUrl } from '../components/invoice.js';
 
 let currentTab = 'all';
 
@@ -32,7 +32,7 @@ function formatTime(dateStr) {
 function getStatusBadge(status) {
   const map = {
     pending: { cls: 'badge-warning', label: 'Pending' },
-    confirmed: { cls: 'badge-info', label: 'Confirmed' },
+    confirmed: { cls: 'badge-info', label: 'Ready for Delivery' },
     delivered: { cls: 'badge-success', label: 'Delivered' },
     cancelled: { cls: 'badge-danger', label: 'Cancelled' },
   };
@@ -78,12 +78,12 @@ function getActionButtons(order) {
   const btns = [];
   if (order.status === 'pending') {
     btns.push(`<button class="btn btn-sm btn-primary order-action-btn" data-id="${order.id}" data-action="confirmed">
-      <span class="material-icons-round" style="font-size:16px">check</span> Confirm
+      <span class="material-icons-round" style="font-size:16px">check</span> Approve (Set to Deliver)
     </button>`);
   }
   if (order.status === 'confirmed') {
-    btns.push(`<button class="btn btn-sm btn-primary order-action-btn" data-id="${order.id}" data-action="delivered" style="background:linear-gradient(135deg, var(--success), #059669)">
-      <span class="material-icons-round" style="font-size:16px">local_shipping</span> Deliver
+    btns.push(`<button class="btn btn-sm btn-secondary order-action-btn" data-id="${order.id}" data-action="delivered" style="border-color:var(--success); color:var(--success)">
+      <span class="material-icons-round" style="font-size:16px">local_shipping</span> Mark Delivered
     </button>`);
   }
   if (order.status === 'pending' || order.status === 'confirmed') {
@@ -193,6 +193,9 @@ function showOrderDetail(order) {
       <button class="btn btn-secondary" id="print-invoice-btn" style="display:flex; align-items:center; gap:6px;">
         <span class="material-icons-round" style="font-size:18px;">print</span> Print Invoice
       </button>
+      <a href="${getWhatsAppShareUrl(order)}" target="_blank" class="btn btn-primary" id="share-whatsapp-btn" style="display:flex; align-items:center; gap:6px; background-color:#25d366; border-color:#25d366; color:white; text-decoration:none;">
+        <span class="material-icons-round" style="font-size:18px;">share</span> Share WhatsApp
+      </a>
     </div>
   `;
 
@@ -224,8 +227,8 @@ export function render() {
 
   const tabs = [
     { key: 'all', label: 'All', count: counts.all },
-    { key: 'pending', label: 'Pending', count: counts.pending },
-    { key: 'confirmed', label: 'Confirmed', count: counts.confirmed },
+    { key: 'pending', label: 'Pending Approval', count: counts.pending },
+    { key: 'confirmed', label: 'Ready to Deliver', count: counts.confirmed },
     { key: 'delivered', label: 'Delivered', count: counts.delivered },
     { key: 'cancelled', label: 'Cancelled', count: counts.cancelled },
   ];
@@ -288,8 +291,11 @@ export function render() {
                     <div class="text-muted" style="font-size:0.72rem">${formatTime(order.createdAt)}</div>
                   </td>
                   <td>
-                    <div class="btn-group" style="flex-wrap:wrap" onclick="event.stopPropagation()">
+                    <div class="btn-group" style="flex-wrap:wrap; gap:4px;" onclick="event.stopPropagation()">
                       ${getActionButtons(order)}
+                      <a href="${getWhatsAppShareUrl(order)}" target="_blank" class="btn btn-sm btn-secondary" title="Share on WhatsApp" style="border-color:#25d366; color:#25d366; display:inline-flex; align-items:center; justify-content:center; padding: 4px 8px; text-decoration:none;">
+                        <span class="material-icons-round" style="font-size:16px;">share</span>
+                      </a>
                     </div>
                   </td>
                 </tr>
@@ -345,14 +351,14 @@ export function init() {
       const order = Store.getOrderById(orderId);
       if (!order) return;
 
-      const labels = { confirmed: 'confirm', delivered: 'mark as delivered', cancelled: 'cancel' };
+      const labels = { confirmed: 'approve and set to deliver', delivered: 'mark as delivered', cancelled: 'cancel' };
       const confirmed = await Modal.confirm(`Are you sure you want to ${labels[action]} order #${orderId.slice(-6).toUpperCase()}?`);
       if (!confirmed) return;
 
       Store.updateOrderStatus(orderId, action);
       const msgs = {
-        confirmed: 'Order confirmed',
-        delivered: 'Order delivered',
+        confirmed: 'Order approved & set to deliver',
+        delivered: 'Order marked as delivered',
         cancelled: 'Order cancelled'
       };
       Toast.success(msgs[action] || 'Status updated');

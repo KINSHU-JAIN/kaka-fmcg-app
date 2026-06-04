@@ -14,11 +14,19 @@ function getProductCount(companyId) {
   return Store.getProducts({ companyId }).length;
 }
 
+function renderCompanyIcon(icon) {
+  if (!icon) return '📦';
+  if (icon.startsWith('/') || icon.startsWith('http')) {
+    return `<img src="${icon}" style="width:36px; height:24px; object-fit:contain; vertical-align:middle; border-radius:4px; background:white; padding:2px; border:1px solid var(--border-light);" />`;
+  }
+  return `<span style="font-size:1.5rem">${icon}</span>`;
+}
+
 function renderCompanyRow(company) {
   const productCount = getProductCount(company.id);
   return `
     <tr>
-      <td style="font-size:1.5rem; text-align:center; width:50px">${company.icon || '📦'}</td>
+      <td style="text-align:center; width:50px">${renderCompanyIcon(company.icon)}</td>
       <td class="table-cell-main">${company.name}</td>
       <td>
         <span class="badge badge-info">${productCount}</span>
@@ -50,10 +58,10 @@ function getCompanyFormHtml(company = null) {
         value="${company ? company.name : ''}" required />
     </div>
     <div class="form-group">
-      <label class="form-label">Icon (Emoji)</label>
-      <input type="text" class="form-input" id="company-icon" placeholder="e.g. 🧴"
-        value="${company ? company.icon || '' : ''}" maxlength="4" />
-      <span class="form-hint">Paste an emoji or type a short icon character</span>
+      <label class="form-label">Icon (Emoji or Logo Path)</label>
+      <input type="text" class="form-input" id="company-icon" placeholder="e.g. 🧴 or /logos/hul.png"
+        value="${company ? company.icon || '' : ''}" maxlength="100" />
+      <span class="form-hint">Paste an emoji or path to the brand logo image (e.g. /logos/hul.png)</span>
     </div>
   `;
 }

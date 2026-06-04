@@ -5,6 +5,7 @@
 import { Store } from '../data/store.js';
 import { Toast } from '../components/toast.js';
 import { Modal } from '../components/modal.js';
+import { printCatalog } from '../components/catalog.js';
 
 // ---------- Helpers ----------
 
@@ -105,6 +106,10 @@ export function render() {
           <p class="page-subtitle">${shopCount} shop${shopCount !== 1 ? 's' : ''} registered</p>
         </div>
         <div class="btn-group">
+          <button class="btn btn-secondary" id="staff-catalog-btn" style="display:inline-flex; align-items:center; gap:6px;">
+            <span class="material-icons-round">picture_as_pdf</span>
+            Catalog
+          </button>
           <button class="btn btn-primary" id="add-shop-btn">
             <span class="material-icons-round">add</span>
             Add Shop
@@ -177,6 +182,14 @@ export function init() {
 
   const emptyAddBtn = document.getElementById('empty-add-shop-btn');
   if (emptyAddBtn) emptyAddBtn.addEventListener('click', openAddModal);
+
+  // Staff catalog
+  const catalogBtn = document.getElementById('staff-catalog-btn');
+  if (catalogBtn) {
+    catalogBtn.addEventListener('click', () => {
+      printCatalog(window.__currentFirm || 'firm_ka');
+    });
+  }
 
   // Bind card-level buttons
   bindShopButtons();

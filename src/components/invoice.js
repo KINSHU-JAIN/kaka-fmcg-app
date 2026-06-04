@@ -333,3 +333,47 @@ export function printInvoice(order) {
   printWindow.document.write(html);
   printWindow.document.close();
 }
+
+export function getWhatsAppShareUrl(order) {
+  const shop = Store.getShopById(order.shopId);
+  const firm = Store.getFirmById(order.firmId);
+  const items = order.items || [];
+  
+  const phone = shop?.phone || order.shopPhone || '';
+  let cleanPhone = phone.replace(/\D/g, '');
+  if (cleanPhone.length === 10) {
+    cleanPhone = '91' + cleanPhone;
+  }
+
+  // Base URL for our online printable invoice
+  const onlineInvoiceUrl = `${window.location.origin}${window.location.pathname}#/invoice?id=${order.id}`;
+
+  const dateStr = new Date(order.createdAt).toLocaleDateString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric'
+  });
+  
+  const itemsText = items.map((item) => {
+    return `• ${item.name} (${item.qty} units) - ₹${(item.price * item.qty).toLocaleString('en-IN')}`;
+  }).join('\n');
+
+  const paymentTerms = order.paymentMode === 'credit' 
+    ? 'Credit / Outstanding (Please settle early to avoid ₹50/day penalty)' 
+    : order.paymentMode === 'upi' ? 'UPI / Online' : 'Cash Collected';
+
+  const message = `*INVOICE* - *${firm?.name || 'Kaka FMCG'}*\n` +
+    `-----------------------------------\n` +
+    `*Invoice #:* #${order.id.slice(-6).toUpperCase()}\n` +
+    `*Date:* ${dateStr}\n` +
+    `*Billed To:* ${shop?.name || 'Customer'}\n` +
+    `-----------------------------------\n` +
+    `*Items:*\n${itemsText}\n` +
+    `-----------------------------------\n` +
+    `*Total Amount:* ₹${(order.total || 0).toLocaleString('en-IN')}\n` +
+    `*Payment Mode:* ${paymentTerms}\n` +
+    `*Payment Status:* ${order.paymentStatus.toUpperCase()}\n` +
+    `-----------------------------------\n` +
+    `View/Print Invoice & Pay Online: ${onlineInvoiceUrl}\n\n` +
+    `Thank you for your business!`;
+
+  return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+}

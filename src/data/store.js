@@ -73,12 +73,137 @@ function initStore(seedData) {
     _data = existing;
   } else {
     _data = seedData;
-    saveData(_data);
   }
+  if (!_data.ledgers) _data.ledgers = [];
+  if (!_data.staffLocations) _data.staffLocations = [];
+  saveData(_data);
+  initLedgers();
 }
 
 function persist() {
   saveData(_data);
+}
+
+// ---------- Ledger & Location Helpers ----------
+function initLedgers() {
+  if (!_data.ledgers) _data.ledgers = [];
+  
+  if (_data.ledgers.length === 0 && _data.orders && _data.orders.length > 0) {
+    const sortedOrders = [..._data.orders].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    sortedOrders.forEach(o => {
+      if (o.status === 'cancelled') return;
+      
+      // Debit order
+      addLedgerEntry(o.shopId, o.total, 'debit', o.id, `Order #${o.id.slice(-6).toUpperCase()} approved`, o.createdAt);
+      
+      // If paid, credit order
+      if (o.paymentStatus === 'paid') {
+        addLedgerEntry(o.shopId, o.total, 'credit', o.id, `Payment received for Order #${o.id.slice(-6).toUpperCase()}`, o.deliveredAt || o.createdAt);
+      }
+    });
+  }
+}
+
+function getLedger(shopId) {
+  const entries = (_data.ledgers || []).filter(e => e.shopId === shopId);
+  entries.sort((a, b) => new Date(a.date) - new Date(b.date));
+  return entries;
+}
+
+function addLedgerEntry(shopId, amount, type, refId = null, description = '', date = null) {
+  if (!_data.ledgers) _data.ledgers = [];
+  
+  const entries = _data.ledgers.filter(e => e.shopId === shopId);
+  let prevBalance = 0;
+  if (entries.length > 0) {
+    entries.sort((a, b) => new Date(a.date) - new Date(b.date));
+    prevBalance = entries[entries.length - 1].runningBalance;
+  }
+  
+  const balanceChange = (type === 'debit') ? amount : -amount;
+  const runningBalance = prevBalance + balanceChange;
+  
+  const entry = {
+    id: uid(),
+    shopId,
+    date: date || new Date().toISOString(),
+    type,
+    refId,
+    description,
+    amount,
+    runningBalance
+  };
+  
+  _data.ledgers.push(entry);
+  persist();
+  emit('ledgers:change', _data.ledgers);
+
+  if (isSupabaseConfigured) {
+    supabase.from('ledgers').insert(keysToSnake(entry))
+      .then(({ error }) => {
+        if (error) console.error('Error inserting ledger entry in Supabase:', error);
+      });
+  }
+
+  return entry;
+}
+
+function addLedgerPayment(shopId, amount, paymentMode, staffId = null) {
+  const staff = staffId ? getStaffById(staffId) : null;
+  const collector = staff ? staff.name : 'Admin';
+  const description = `Partial payment collected in ${paymentMode.toUpperCase()} by ${collector}`;
+  
+  // Add credit entry
+  const entry = addLedgerEntry(shopId, amount, 'credit', null, description);
+  
+  // Update orders payment status if overall balance is settled
+  const outstanding = getShopOutstanding(shopId);
+  if (outstanding.totalOutstanding <= 0) {
+    const orders = _data.orders || [];
+    orders.forEach(o => {
+      if (o.shopId === shopId && o.paymentStatus === 'unpaid' && o.status !== 'cancelled') {
+        o.paymentStatus = 'paid';
+      }
+    });
+    emit('orders:change', _data.orders);
+  }
+  
+  return entry;
+}
+
+function saveStaffLocation(staffId, lat, lng) {
+  if (!_data.staffLocations) _data.staffLocations = [];
+  const idx = _data.staffLocations.findIndex(l => l.staffId === staffId);
+  const location = {
+    staffId,
+    lat,
+    lng,
+    updatedAt: new Date().toISOString()
+  };
+  if (idx !== -1) {
+    _data.staffLocations[idx] = location;
+  } else {
+    _data.staffLocations.push(location);
+  }
+  persist();
+  emit('staffLocations:change', _data.staffLocations);
+
+  if (isSupabaseConfigured) {
+    supabase.from('staff_locations').upsert(keysToSnake(location))
+      .then(({ error }) => {
+        if (error) console.error('Error upserting staff location in Supabase:', error);
+      });
+  }
+
+  return location;
+}
+
+function getStaffLocations() {
+  return _data.staffLocations || [];
+}
+
+function getStaffLocation(staffId) {
+  return (_data.staffLocations || []).find(l => l.staffId === staffId) || null;
 }
 
 // ---------- Supabase Connection & Sync ----------
@@ -97,7 +222,9 @@ async function initSupabase(fallbackSeedData) {
       { data: shops, error: eShops },
       { data: staff, error: eStaff },
       { data: orders, error: eOrders },
-      { data: routes, error: eRoutes }
+      { data: routes, error: eRoutes },
+      { data: ledgers, error: eLedgers },
+      { data: staffLocations, error: eStaffLocations }
     ] = await Promise.all([
       supabase.from('firms').select('*'),
       supabase.from('companies').select('*'),
@@ -105,10 +232,12 @@ async function initSupabase(fallbackSeedData) {
       supabase.from('shops').select('*'),
       supabase.from('staff').select('*'),
       supabase.from('orders').select('*'),
-      supabase.from('routes').select('*')
+      supabase.from('routes').select('*'),
+      supabase.from('ledgers').select('*'),
+      supabase.from('staff_locations').select('*')
     ]);
 
-    if (eFirms || eCompanies || eProducts || eShops || eStaff || eOrders || eRoutes) {
+    if (eFirms || eCompanies || eProducts || eShops || eStaff || eOrders || eRoutes || eLedgers || eStaffLocations) {
       throw new Error('Failed to query one or more tables from Supabase');
     }
 
@@ -120,8 +249,11 @@ async function initSupabase(fallbackSeedData) {
       shops: shops ? shops.map(keysToCamel) : [],
       staff: staff ? staff.map(keysToCamel) : [],
       orders: orders ? orders.map(keysToCamel) : [],
-      routes: routes ? routes.map(keysToCamel) : []
+      routes: routes ? routes.map(keysToCamel) : [],
+      ledgers: ledgers ? ledgers.map(keysToCamel) : [],
+      staffLocations: staffLocations ? staffLocations.map(keysToCamel) : []
     };
+    initLedgers();
 
     console.log('Data loaded successfully from Supabase:', _data);
 
@@ -146,7 +278,9 @@ async function initSupabase(fallbackSeedData) {
 
 function handleRealtimeChange(payload) {
   const { table, eventType, new: newRow, old: oldRow } = payload;
-  const dataKey = table; // firms, companies, products, shops, staff, orders, routes match the table names
+  let dataKey = table;
+  if (table === 'staff_locations') dataKey = 'staffLocations';
+  
   if (!_data || !_data[dataKey]) return;
 
   const camelNew = keysToCamel(newRow);
@@ -154,17 +288,19 @@ function handleRealtimeChange(payload) {
 
   console.log(`Realtime change received: [${table}] ${eventType}`, payload);
 
+  const keyField = (dataKey === 'staffLocations') ? 'staffId' : 'id';
+
   if (eventType === 'INSERT') {
-    if (!_data[dataKey].some(item => item.id === camelNew.id)) {
+    if (!_data[dataKey].some(item => item[keyField] === camelNew[keyField])) {
       _data[dataKey].push(camelNew);
     }
   } else if (eventType === 'UPDATE') {
-    const idx = _data[dataKey].findIndex(item => item.id === camelNew.id);
+    const idx = _data[dataKey].findIndex(item => item[keyField] === camelNew[keyField]);
     if (idx !== -1) {
       _data[dataKey][idx] = { ..._data[dataKey][idx], ...camelNew };
     }
   } else if (eventType === 'DELETE') {
-    _data[dataKey] = _data[dataKey].filter(item => item.id !== camelOld.id);
+    _data[dataKey] = _data[dataKey].filter(item => item[keyField] !== camelOld[keyField]);
   }
 
   // Trigger reactive redraws
@@ -388,70 +524,80 @@ function deleteShop(id) {
 }
 
 function getShopOutstanding(shopId) {
-  const orders = getOrders({ shopId });
-  const unpaidOrders = orders.filter(o => o.paymentStatus === 'unpaid' && o.status !== 'cancelled');
+  const entries = (_data.ledgers || []).filter(e => e.shopId === shopId);
+  if (entries.length === 0) {
+    return {
+      totalOutstanding: 0,
+      totalPenalty: 0,
+      unpaidOrdersCount: 0,
+      details: []
+    };
+  }
   
-  let totalOutstanding = 0;
-  let totalPenalty = 0;
+  entries.sort((a, b) => new Date(a.date) - new Date(b.date));
+  const latestEntry = entries[entries.length - 1];
+  const ledgerBalance = latestEntry.runningBalance;
+  
   const unpaidDetails = [];
+  let totalPenalty = 0;
   const now = new Date();
   
-  unpaidOrders.forEach(order => {
-    const created = new Date(order.createdAt);
-    const diffTime = Math.abs(now - created);
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-    
-    let penalty = 0;
-    if (diffDays > 7) {
-      penalty = (diffDays - 7) * 50;
+  // Find unpaid debit transactions (orders)
+  const debitEntries = entries.filter(e => e.type === 'debit');
+  const creditEntries = entries.filter(e => e.type === 'credit');
+  const creditRefIds = new Set(creditEntries.map(e => e.refId).filter(Boolean));
+  
+  debitEntries.forEach(debit => {
+    if (!creditRefIds.has(debit.refId)) {
+      const order = getOrderById(debit.refId);
+      if (order && order.status !== 'cancelled' && order.paymentStatus !== 'paid') {
+        const created = new Date(order.createdAt);
+        const diffTime = Math.abs(now - created);
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        
+        let penalty = 0;
+        if (diffDays > 7) {
+          penalty = (diffDays - 7) * 50;
+          totalPenalty += penalty;
+        }
+        
+        unpaidDetails.push({
+          orderId: order.id,
+          originalTotal: order.total,
+          penalty,
+          daysOld: diffDays,
+          outstanding: order.total + penalty
+        });
+      }
     }
-    
-    const orderOutstanding = order.total + penalty;
-    totalOutstanding += orderOutstanding;
-    totalPenalty += penalty;
-    
-    unpaidDetails.push({
-      orderId: order.id,
-      originalTotal: order.total,
-      penalty,
-      daysOld: diffDays,
-      outstanding: orderOutstanding
-    });
   });
 
   return {
-    totalOutstanding,
+    totalOutstanding: Math.max(0, ledgerBalance + totalPenalty),
     totalPenalty,
-    unpaidOrdersCount: unpaidOrders.length,
+    unpaidOrdersCount: unpaidDetails.length,
     details: unpaidDetails
   };
 }
 
 function settleShopOutstanding(shopId) {
+  const outstanding = getShopOutstanding(shopId);
+  if (outstanding.totalOutstanding <= 0) return 0;
+  
+  // Add credit entry
+  addLedgerEntry(shopId, outstanding.totalOutstanding, 'credit', null, 'Full outstanding balance settlement');
+  
+  // Mark unpaid orders as paid
   const orders = _data.orders || [];
-  let settledCount = 0;
   const dbUpdates = [];
   
   orders.forEach(o => {
     if (o.shopId === shopId && o.paymentStatus === 'unpaid' && o.status !== 'cancelled') {
-      const created = new Date(o.createdAt);
-      const diffTime = Math.abs(new Date() - created);
-      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-      if (diffDays > 7) {
-        const penalty = (diffDays - 7) * 50;
-        o.total += penalty;
-        o.penaltyAdded = penalty;
-      }
       o.paymentStatus = 'paid';
-      settledCount++;
-
+      
       if (isSupabaseConfigured) {
         dbUpdates.push(
-          supabase.from('orders').update({
-            total: o.total,
-            penalty_added: o.penaltyAdded || 0,
-            payment_status: 'paid'
-          }).eq('id', o.id)
+          supabase.from('orders').update({ payment_status: 'paid' }).eq('id', o.id)
         );
       }
     }
@@ -461,12 +607,12 @@ function settleShopOutstanding(shopId) {
 
   if (isSupabaseConfigured) {
     Promise.all(dbUpdates).then(results => {
-      results.forEach(({ error }) => { if (error) console.error('Error settling order outstanding:', error); });
+      results.forEach(({ error }) => { if (error) console.error('Error settling orders on Supabase:', error); });
     });
   } else {
     persist();
   }
-  return settledCount;
+  return 1;
 }
 
 // ---------- Orders ----------
@@ -508,20 +654,74 @@ function addOrder(order) {
 function updateOrderStatus(id, status) {
   const idx = _data.orders.findIndex(o => o.id === id);
   if (idx === -1) return null;
+  const oldStatus = _data.orders[idx].status;
   _data.orders[idx].status = status;
   const updates = { status };
+  
   if (status === 'confirmed') {
     _data.orders[idx].confirmedAt = new Date().toISOString();
     updates.confirmedAt = _data.orders[idx].confirmedAt;
+    
+    // Debit order
+    addLedgerEntry(_data.orders[idx].shopId, _data.orders[idx].total, 'debit', id, `Order #${id.slice(-6).toUpperCase()} approved`);
   } else if (status === 'delivered') {
     _data.orders[idx].deliveredAt = new Date().toISOString();
     updates.deliveredAt = _data.orders[idx].deliveredAt;
+    
+    if (_data.orders[idx].paymentStatus === 'paid') {
+      addLedgerEntry(_data.orders[idx].shopId, _data.orders[idx].total, 'credit', id, `Payment received on delivery for Order #${id.slice(-6).toUpperCase()}`);
+    }
+  } else if (status === 'cancelled') {
+    if (oldStatus === 'confirmed' || oldStatus === 'delivered') {
+      addLedgerEntry(_data.orders[idx].shopId, _data.orders[idx].total, 'credit', id, `Order #${id.slice(-6).toUpperCase()} cancelled (Reverted debit)`);
+    }
   }
+  
   emit('orders:change', _data.orders);
 
   if (isSupabaseConfigured) {
     supabase.from('orders').update(keysToSnake(updates)).eq('id', id)
       .then(({ error }) => { if (error) console.error('Error updating order status:', error); });
+  } else {
+    persist();
+  }
+  return _data.orders[idx];
+}
+
+function updateOrder(id, updates) {
+  const idx = _data.orders.findIndex(o => o.id === id);
+  if (idx === -1) return null;
+  
+  const oldOrder = { ..._data.orders[idx] };
+  _data.orders[idx] = { ..._data.orders[idx], ...updates };
+  const newOrder = _data.orders[idx];
+  
+  // Ledger operations
+  if (updates.status === 'confirmed' && oldOrder.status !== 'confirmed') {
+    addLedgerEntry(newOrder.shopId, newOrder.total, 'debit', id, `Order #${id.slice(-6).toUpperCase()} approved`);
+  }
+  
+  if (updates.status === 'delivered' && oldOrder.status !== 'delivered') {
+    if (newOrder.paymentStatus === 'paid') {
+      addLedgerEntry(newOrder.shopId, newOrder.total, 'credit', id, `Payment received for Order #${id.slice(-6).toUpperCase()}`);
+    }
+  }
+  
+  if (updates.paymentStatus === 'paid' && oldOrder.paymentStatus !== 'paid') {
+    addLedgerEntry(newOrder.shopId, newOrder.total, 'credit', id, `Payment received for Order #${id.slice(-6).toUpperCase()}`);
+  }
+  
+  if (updates.status === 'cancelled' && oldOrder.status !== 'cancelled') {
+    if (oldOrder.status === 'confirmed' || oldOrder.status === 'delivered') {
+      addLedgerEntry(newOrder.shopId, newOrder.total, 'credit', id, `Order #${id.slice(-6).toUpperCase()} cancelled (Reverted debit)`);
+    }
+  }
+  
+  emit('orders:change', _data.orders);
+
+  if (isSupabaseConfigured) {
+    supabase.from('orders').update(keysToSnake(updates)).eq('id', id)
+      .then(({ error }) => { if (error) console.error('Error updating order:', error); });
   } else {
     persist();
   }
@@ -775,11 +975,19 @@ export const Store = {
   deleteShop,
   getShopOutstanding,
   settleShopOutstanding,
+  // Ledger & Geolocation
+  getLedger,
+  addLedgerEntry,
+  addLedgerPayment,
+  saveStaffLocation,
+  getStaffLocations,
+  getStaffLocation,
   // Orders
   getOrders,
   getOrderById,
   addOrder,
   updateOrderStatus,
+  updateOrder,
   deleteOrder,
   // Routes
   getRoutes,

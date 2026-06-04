@@ -5,6 +5,7 @@
 import { Store } from '../data/store.js';
 import { Toast } from '../components/toast.js';
 import { Modal } from '../components/modal.js';
+import { printCatalog } from '../components/catalog.js';
 
 const UNITS = ['piece', 'pack', 'bottle', 'tube', 'jar', 'can', 'box', 'kg', 'strip', 'tub', 'cup', 'bar', 'tin'];
 
@@ -35,7 +36,7 @@ function getProductFormHtml(product = null) {
         <option value="">Select Company</option>
         ${companies.map(c => `
           <option value="${c.id}" ${product && product.companyId === c.id ? 'selected' : ''}>
-            ${c.icon || '📦'} ${c.name}
+            ${c.name}
           </option>
         `).join('')}
       </select>
@@ -98,6 +99,14 @@ function getProductFormHtml(product = null) {
   `;
 }
 
+function renderCompanyIcon(icon, size = '18px') {
+  if (!icon) return '📦';
+  if (icon.startsWith('/') || icon.startsWith('http')) {
+    return `<img src="${icon}" style="width:${size}; height:${size}; object-fit:contain; vertical-align:middle; border-radius:3px; background:white; padding:2px; border:1px solid var(--border-light); margin-right:4px;" />`;
+  }
+  return icon + ' ';
+}
+
 function renderProductRow(product) {
   const company = Store.getCompanyById(product.companyId);
   const companyName = company ? company.name : 'Unknown';
@@ -117,7 +126,7 @@ function renderProductRow(product) {
         <div>${product.name}</div>
         ${tierInfo}
       </td>
-      <td class="truncate" style="max-width:150px">${company ? `${company.icon || ''} ${companyName}` : companyName}</td>
+      <td class="truncate" style="max-width:150px; display:flex; align-items:center; gap:6px;">${company ? `${renderCompanyIcon(company.icon, '20px')} ${companyName}` : companyName}</td>
       <td>
         <span class="inline-edit-price" data-id="${product.id}" data-field="mrp" title="Click to edit">
           ${formatCurrency(product.mrp)}
@@ -171,14 +180,18 @@ export function render() {
         <span class="material-icons-round">add</span>
         Add Product
       </button>
+      <button class="btn btn-secondary" id="print-catalog-btn" style="display:inline-flex; align-items:center; gap:6px;">
+        <span class="material-icons-round">picture_as_pdf</span>
+        Download Catalog
+      </button>
     </div>
 
     <!-- Company Filter Chips -->
     <div class="chips-row mb-md">
       <button class="chip ${!currentCompanyFilter ? 'active' : ''}" data-company="">All Companies</button>
       ${companies.map(c => `
-        <button class="chip ${currentCompanyFilter === c.id ? 'active' : ''}" data-company="${c.id}">
-          ${c.icon || '📦'} ${c.name}
+        <button class="chip ${currentCompanyFilter === c.id ? 'active' : ''}" data-company="${c.id}" style="display:inline-flex; align-items:center; gap:6px;">
+          ${renderCompanyIcon(c.icon, '16px')} ${c.name}
         </button>
       `).join('')}
     </div>
@@ -393,6 +406,14 @@ export function init() {
   const addBtn = document.getElementById('add-product-btn');
   if (addBtn) {
     addBtn.addEventListener('click', () => showProductModal());
+  }
+
+  // Print catalog
+  const printCatalogBtn = document.getElementById('print-catalog-btn');
+  if (printCatalogBtn) {
+    printCatalogBtn.addEventListener('click', () => {
+      printCatalog(getFirmId());
+    });
   }
 
   // Inline price editing
