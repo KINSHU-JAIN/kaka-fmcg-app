@@ -3,6 +3,7 @@
 // ============================================
 
 import { Store } from '../data/store.js';
+import { isSupabaseConfigured } from '../data/supabaseClient.js';
 
 const adminMenuItems = [
   { section: 'Main', items: [
@@ -87,6 +88,12 @@ export function renderSidebar(role) {
           <button class="sidebar-logout" id="sidebar-logout" title="Logout">
             <span class="material-icons-round">logout</span>
           </button>
+        </div>
+        <div class="db-status-badge ${isSupabaseConfigured ? 'supabase' : 'local'}" style="display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 600; padding: 6px 12px; border-radius: var(--radius-md); margin-top: 12px; border: 1px solid transparent; width: 100%; box-sizing: border-box;">
+          <span class="material-icons-round" style="font-size: 14px; margin-right: 6px;">
+            ${isSupabaseConfigured ? 'cloud_done' : 'cloud_off'}
+          </span>
+          ${isSupabaseConfigured ? 'Supabase Sync Active' : 'Offline / Local Mode'}
         </div>
       </div>
     </aside>
