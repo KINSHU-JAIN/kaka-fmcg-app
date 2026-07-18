@@ -446,14 +446,6 @@ function openCollectModal(shopId) {
       const entry = Store.addLedgerPayment(shopId, amount, mode, staffId);
       Toast.success(`Recovery payment of ${formatCurrency(amount)} recorded successfully!`);
       Modal.hide();
-      
-      // Automatically launch native WhatsApp on user's device (without opening a new browser tab)
-      try {
-        const waUrl = getWhatsAppReceiptUrl(entry, true);
-        window.location.href = waUrl;
-      } catch (err) {
-        console.error('Failed to auto-open WhatsApp:', err);
-      }
 
       showReceiptModal(entry);
     }

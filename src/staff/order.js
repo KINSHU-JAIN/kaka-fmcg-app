@@ -794,14 +794,6 @@ function submitOrder(paymentMode, paymentStatus, shop, items, total, notes, sess
   clearCart();
   refreshAll();
 
-  // Automatically launch native WhatsApp on user's device (without opening a new browser tab)
-  try {
-    const waUrl = getWhatsAppShareUrl(order, true);
-    window.location.href = waUrl;
-  } catch (err) {
-    console.error('Failed to auto-open WhatsApp:', err);
-  }
-
   // Show success modal with navigation options
   Modal.show({
     title: 'Order Placed!',
