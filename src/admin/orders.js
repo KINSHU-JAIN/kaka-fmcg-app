@@ -8,6 +8,7 @@ import { Modal } from '../components/modal.js';
 import { printInvoice, getWhatsAppShareUrl } from '../components/invoice.js';
 
 let currentTab = 'all';
+let selectedDate = '';
 
 function getFirmId() {
   return window.__currentFirm || 'firm_ka';
@@ -79,11 +80,6 @@ function getActionButtons(order) {
   if (order.status === 'pending') {
     btns.push(`<button class="btn btn-sm btn-primary order-action-btn" data-id="${order.id}" data-action="confirmed">
       <span class="material-icons-round" style="font-size:16px">check</span> Approve (Set to Deliver)
-    </button>`);
-  }
-  if (order.status === 'confirmed') {
-    btns.push(`<button class="btn btn-sm btn-secondary order-action-btn" data-id="${order.id}" data-action="delivered" style="border-color:var(--success); color:var(--success)">
-      <span class="material-icons-round" style="font-size:16px">local_shipping</span> Mark Delivered
     </button>`);
   }
   if (order.status === 'pending' || order.status === 'confirmed') {
@@ -218,9 +214,17 @@ export function render() {
   const firmId = getFirmId();
   const filters = { firmId };
   if (currentTab !== 'all') filters.status = currentTab;
-  const orders = Store.getOrders(filters);
+  let orders = Store.getOrders(filters);
   const allOrders = Store.getOrders({ firmId });
   const pendingOrders = allOrders.filter(o => o.status === 'pending');
+
+  // Filter by date if selected
+  if (selectedDate) {
+    orders = orders.filter(o => {
+      const orderDate = new Date(o.createdAt).toISOString().split('T')[0];
+      return orderDate === selectedDate;
+    });
+  }
 
   // Count by status
   const counts = { all: allOrders.length, pending: 0, confirmed: 0, delivered: 0, cancelled: 0 };
@@ -247,16 +251,31 @@ export function render() {
     <!-- Orders Table -->
     <div class="table-container">
       <div class="table-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
-        <h3 class="table-title" style="margin:0;">
+        <h3 class="table-title" style="margin:0; display:flex; align-items:center;">
           <span class="material-icons-round" style="vertical-align:middle; margin-right:8px; font-size:20px">receipt_long</span>
           Orders (${orders.length})
         </h3>
-        ${pendingOrders.length > 0 ? `
-          <button class="btn btn-primary" id="approve-all-pending-btn" style="background:var(--success); border-color:var(--success); color:white; display:flex; align-items:center; gap:6px;">
-            <span class="material-icons-round" style="font-size:18px;">done_all</span>
-            Approve All Pending (${pendingOrders.length})
-          </button>
-        ` : ''}
+        
+        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+          <!-- Date Filter -->
+          <div style="display:flex; align-items:center; gap:6px; background:var(--bg-primary); border:1px solid var(--border); padding:2px 8px; border-radius:var(--radius-md);">
+            <span class="material-icons-round" style="font-size:18px; color:var(--text-muted);">calendar_month</span>
+            <input type="date" class="form-input" id="order-date-filter" value="${selectedDate}" style="padding:4px 6px; font-size:0.85rem; border:none; background:transparent; color:var(--text-primary); outline:none; height:30px;" />
+            ${selectedDate ? `
+              <button class="btn-icon" id="clear-date-filter-btn" style="padding:2px; display:inline-flex; align-items:center; justify-content:center; color:var(--text-muted); cursor:pointer; background:none; border:none;" title="Clear Filter">
+                <span class="material-icons-round" style="font-size:16px;">close</span>
+              </button>
+            ` : ''}
+          </div>
+
+          <!-- Bulk Approve Button -->
+          ${pendingOrders.length > 0 ? `
+            <button class="btn btn-primary" id="approve-all-pending-btn" style="background:var(--success); border-color:var(--success); color:white; display:flex; align-items:center; gap:6px; height:34px; padding:0 12px; font-size:0.85rem; border-radius:var(--radius-md);">
+              <span class="material-icons-round" style="font-size:18px;">done_all</span>
+              Approve All Pending (${pendingOrders.length})
+            </button>
+          ` : ''}
+        </div>
       </div>
       ${orders.length > 0 ? `
       <div style="overflow-x:auto">
@@ -333,6 +352,24 @@ function reRender() {
 }
 
 export function init() {
+  // Date filter change
+  const dateFilter = document.getElementById('order-date-filter');
+  if (dateFilter) {
+    dateFilter.addEventListener('change', (e) => {
+      selectedDate = e.target.value;
+      reRender();
+    });
+  }
+
+  // Clear date filter
+  const clearDateBtn = document.getElementById('clear-date-filter-btn');
+  if (clearDateBtn) {
+    clearDateBtn.addEventListener('click', () => {
+      selectedDate = '';
+      reRender();
+    });
+  }
+
   // Bulk approve button
   const bulkApproveBtn = document.getElementById('approve-all-pending-btn');
   if (bulkApproveBtn) {
