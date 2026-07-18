@@ -31,11 +31,11 @@ function formatDate(isoStr) {
   return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-// Get routes assigned to the logged-in staff member
+// Get routes assigned to the logged-in staff member (Returns all routes)
 function getAssignedRoutes() {
   const staffId = getStaffId();
   if (!staffId) return [];
-  return Store.getRoutes(getFirmId()).filter(r => r.assignedStaffId === staffId);
+  return Store.getRoutes(getFirmId());
 }
 
 // ---------- Sub-renders ----------

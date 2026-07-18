@@ -40,8 +40,8 @@ function getAssignedRoutes() {
   const staffId = getStaffId();
   if (!staffId) return [];
   
-  // Get routes assigned directly to staff
-  const routes = Store.getRoutes(getFirmId()).filter(r => r.assignedStaffId === staffId);
+  // Get all routes in the system for this firm
+  const routes = [...Store.getRoutes(getFirmId())];
   
   // Check if there are any orders directly assigned to this staff member
   const orders = Store.getOrders({ firmId: getFirmId(), status: 'confirmed' }).filter(o => o.staffId === staffId);
