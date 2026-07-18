@@ -220,6 +220,7 @@ export function render() {
   if (currentTab !== 'all') filters.status = currentTab;
   const orders = Store.getOrders(filters);
   const allOrders = Store.getOrders({ firmId });
+  const pendingOrders = allOrders.filter(o => o.status === 'pending');
 
   // Count by status
   const counts = { all: allOrders.length, pending: 0, confirmed: 0, delivered: 0, cancelled: 0 };
@@ -245,11 +246,17 @@ export function render() {
 
     <!-- Orders Table -->
     <div class="table-container">
-      <div class="table-header">
-        <h3 class="table-title">
+      <div class="table-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+        <h3 class="table-title" style="margin:0;">
           <span class="material-icons-round" style="vertical-align:middle; margin-right:8px; font-size:20px">receipt_long</span>
           Orders (${orders.length})
         </h3>
+        ${pendingOrders.length > 0 ? `
+          <button class="btn btn-primary" id="approve-all-pending-btn" style="background:var(--success); border-color:var(--success); color:white; display:flex; align-items:center; gap:6px;">
+            <span class="material-icons-round" style="font-size:18px;">done_all</span>
+            Approve All Pending (${pendingOrders.length})
+          </button>
+        ` : ''}
       </div>
       ${orders.length > 0 ? `
       <div style="overflow-x:auto">
@@ -326,6 +333,75 @@ function reRender() {
 }
 
 export function init() {
+  // Bulk approve button
+  const bulkApproveBtn = document.getElementById('approve-all-pending-btn');
+  if (bulkApproveBtn) {
+    bulkApproveBtn.addEventListener('click', () => {
+      const firmId = getFirmId();
+      const allOrders = Store.getOrders({ firmId });
+      const pendingOrders = allOrders.filter(o => o.status === 'pending');
+      if (pendingOrders.length === 0) return;
+
+      const staffList = Store.getStaff().filter(s => !s.isBlocked);
+      const modalContent = `
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <p style="color:var(--text-secondary); font-size:0.95rem; margin:0;">
+            You are about to approve and dispatch all <strong>${pendingOrders.length} pending orders</strong> for delivery today.
+          </p>
+          <div class="form-group" style="margin:0;">
+            <label class="form-label" style="display:block; margin-bottom:6px; font-weight:600; font-size:0.85rem; color:var(--text-secondary);">Assign Delivery Staff (Default for these orders)</label>
+            <select class="form-select" id="bulk-assign-delivery-staff" style="width:100%; padding:10px; border-radius:var(--radius-md); border:1px solid var(--border); background:var(--bg-input); color:var(--text-primary);">
+              <option value="">-- No Assigned Staff (Use individual route staff) --</option>
+              ${staffList.map(s => `
+                <option value="${s.id}">
+                  ${s.name} (${s.username})
+                </option>
+              `).join('')}
+            </select>
+            <span class="form-hint" style="margin-top:6px; font-size:0.75rem; color:var(--text-muted); display:block;">
+              If you select a staff member, all these orders will be assigned to them. Otherwise, each order will default to the worker assigned to the shop's route.
+            </span>
+          </div>
+        </div>
+      `;
+
+      Modal.show({
+        title: `Approve All Pending Orders (${pendingOrders.length})`,
+        content: modalContent,
+        confirmText: 'Approve & Dispatch All',
+        onConfirm: () => {
+          const select = document.getElementById('bulk-assign-delivery-staff');
+          const staffId = select.value || null;
+          const selectedStaff = staffId ? staffList.find(s => s.id === staffId) : null;
+          const staffName = selectedStaff ? selectedStaff.name : null;
+
+          pendingOrders.forEach(order => {
+            let finalStaffId = staffId;
+            let finalStaffName = staffName;
+
+            if (!finalStaffId) {
+              const shop = Store.getShopById(order.shopId);
+              const route = shop && shop.routeId ? Store.getRouteById(shop.routeId) : null;
+              finalStaffId = route ? route.assignedStaffId : order.staffId;
+              const routeStaff = finalStaffId ? staffList.find(s => s.id === finalStaffId) : null;
+              finalStaffName = routeStaff ? routeStaff.name : order.staffName;
+            }
+
+            Store.updateOrder(order.id, { 
+              status: 'confirmed', 
+              staffId: finalStaffId, 
+              staffName: finalStaffName 
+            });
+          });
+
+          Toast.success(`Successfully approved & dispatched ${pendingOrders.length} orders!`);
+          Modal.hide();
+          reRender();
+        }
+      });
+    });
+  }
+
   // Tab switching
   document.querySelectorAll('.tab[data-tab]').forEach(tab => {
     tab.addEventListener('click', () => {
