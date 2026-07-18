@@ -351,18 +351,60 @@ export function init() {
       const order = Store.getOrderById(orderId);
       if (!order) return;
 
-      const labels = { confirmed: 'approve and set to deliver', delivered: 'mark as delivered', cancelled: 'cancel' };
-      const confirmed = await Modal.confirm(`Are you sure you want to ${labels[action]} order #${orderId.slice(-6).toUpperCase()}?`);
-      if (!confirmed) return;
+      if (action === 'confirmed') {
+        const staffList = Store.getStaff().filter(s => !s.isBlocked);
+        const shop = Store.getShopById(order.shopId);
+        const route = shop && shop.routeId ? Store.getRouteById(shop.routeId) : null;
+        const suggestedStaffId = route ? route.assignedStaffId : order.staffId;
 
-      Store.updateOrderStatus(orderId, action);
-      const msgs = {
-        confirmed: 'Order approved & set to deliver',
-        delivered: 'Order marked as delivered',
-        cancelled: 'Order cancelled'
-      };
-      Toast.success(msgs[action] || 'Status updated');
-      reRender();
+        const modalContent = `
+          <div style="display:flex; flex-direction:column; gap:16px;">
+            <p style="color:var(--text-secondary); font-size:0.95rem; margin:0;">
+              Select a delivery worker to deliver this order for today:
+            </p>
+            <div class="form-group" style="margin:0;">
+              <label class="form-label" style="display:block; margin-bottom:6px; font-weight:600; font-size:0.85rem; color:var(--text-secondary);">Delivery Staff</label>
+              <select class="form-select" id="assign-delivery-staff" style="width:100%; padding:10px; border-radius:var(--radius-md); border:1px solid var(--border); background:var(--bg-input); color:var(--text-primary);">
+                <option value="">-- No Assigned Staff (Pending) --</option>
+                ${staffList.map(s => `
+                  <option value="${s.id}" ${s.id === suggestedStaffId ? 'selected' : ''}>
+                    ${s.name} (${s.username})
+                  </option>
+                `).join('')}
+              </select>
+            </div>
+          </div>
+        `;
+
+        Modal.show({
+          title: `Approve Order #${orderId.slice(-6).toUpperCase()}`,
+          content: modalContent,
+          confirmText: 'Approve & Assign',
+          onConfirm: () => {
+            const select = document.getElementById('assign-delivery-staff');
+            const staffId = select.value || null;
+            const selectedStaff = staffId ? staffList.find(s => s.id === staffId) : null;
+            const staffName = selectedStaff ? selectedStaff.name : null;
+
+            Store.updateOrder(orderId, { status: 'confirmed', staffId, staffName });
+            Toast.success('Order approved & assigned for delivery');
+            Modal.hide();
+            reRender();
+          }
+        });
+      } else {
+        const labels = { delivered: 'mark as delivered', cancelled: 'cancel' };
+        const confirmed = await Modal.confirm(`Are you sure you want to ${labels[action]} order #${orderId.slice(-6).toUpperCase()}?`);
+        if (!confirmed) return;
+
+        Store.updateOrderStatus(orderId, action);
+        const msgs = {
+          delivered: 'Order marked as delivered',
+          cancelled: 'Order cancelled'
+        };
+        Toast.success(msgs[action] || 'Status updated');
+        reRender();
+      }
     });
   });
 }

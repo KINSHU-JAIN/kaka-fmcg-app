@@ -39,14 +39,37 @@ function formatTime(isoStr) {
 function getAssignedRoutes() {
   const staffId = getStaffId();
   if (!staffId) return [];
-  return Store.getRoutes(getFirmId()).filter(r => r.assignedStaffId === staffId);
+  
+  // Get routes assigned directly to staff
+  const routes = Store.getRoutes(getFirmId()).filter(r => r.assignedStaffId === staffId);
+  
+  // Check if there are any orders directly assigned to this staff member
+  const orders = Store.getOrders({ firmId: getFirmId(), status: 'confirmed' }).filter(o => o.staffId === staffId);
+  
+  if (orders.length > 0) {
+    const directShopIds = [...new Set(orders.map(o => o.shopId))];
+    routes.push({
+      id: 'direct',
+      name: 'Direct Assignments (Today)',
+      shopIds: directShopIds
+    });
+  }
+  
+  return routes;
 }
 
 // Get orders pending delivery (status === 'confirmed') for a list of shop IDs
-function getRouteOrders(shopIds) {
+function getRouteOrders(shopIds, routeId) {
+  const staffId = getStaffId();
+  const orders = Store.getOrders({ firmId: getFirmId(), status: 'confirmed' });
+  
+  if (routeId === 'direct') {
+    // Return all orders explicitly assigned to this staff member
+    return orders.filter(o => o.staffId === staffId);
+  }
+  
   if (!shopIds || shopIds.length === 0) return [];
   const shopSet = new Set(shopIds);
-  const orders = Store.getOrders({ firmId: getFirmId(), status: 'confirmed' });
   return orders.filter(o => shopSet.has(o.shopId));
 }
 
@@ -207,7 +230,7 @@ export function render() {
   const activeRoute = routes.find(r => r.id === selectedRouteId);
   const routeShopIds = activeRoute ? (activeRoute.shopIds || []) : [];
   const shops = routeShopIds.map(id => Store.getShopById(id)).filter(Boolean);
-  const orders = getRouteOrders(routeShopIds);
+  const orders = getRouteOrders(routeShopIds, selectedRouteId);
 
   return `
     <div class="stagger">
