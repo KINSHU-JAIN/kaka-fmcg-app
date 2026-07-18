@@ -10,6 +10,16 @@ import { printInvoice, getWhatsAppShareUrl } from '../components/invoice.js';
 let currentTab = 'all';
 let selectedDate = '';
 
+function getLocalReturns() {
+  try { return JSON.parse(localStorage.getItem('kaka_returns') || '[]'); } catch { return []; }
+}
+function updateLocalReturn(id, updates) {
+  const returns = getLocalReturns();
+  const idx = returns.findIndex(r => r.id === id);
+  if (idx !== -1) returns[idx] = { ...returns[idx], ...updates };
+  localStorage.setItem('kaka_returns', JSON.stringify(returns));
+}
+
 function getFirmId() {
   return window.__currentFirm || 'firm_ka';
 }
@@ -234,12 +244,16 @@ export function render() {
   const counts = { all: allOrders.length, pending: 0, confirmed: 0, delivered: 0, cancelled: 0 };
   allOrders.forEach(o => { if (counts[o.status] !== undefined) counts[o.status]++; });
 
+  const returnsData = getLocalReturns().filter(r => r.firmId === firmId);
+  const pendingReturnsCount = returnsData.filter(r => r.status === 'pending').length;
+
   const tabs = [
     { key: 'all', label: 'All', count: counts.all },
     { key: 'pending', label: 'Pending Approval', count: counts.pending },
     { key: 'confirmed', label: 'Ready to Deliver', count: counts.confirmed },
     { key: 'delivered', label: 'Delivered', count: counts.delivered },
     { key: 'cancelled', label: 'Cancelled', count: counts.cancelled },
+    { key: 'returns', label: 'Returns', count: pendingReturnsCount },
   ];
 
   return `
@@ -247,11 +261,48 @@ export function render() {
     <div class="tabs mb-lg">
       ${tabs.map(t => `
         <button class="tab ${currentTab === t.key ? 'active' : ''}" data-tab="${t.key}">
-          ${t.label} (${t.count})
+          ${t.label} ${t.count > 0 ? `(${t.count})` : ''}
         </button>
       `).join('')}
     </div>
 
+    ${currentTab === 'returns' ? `
+    <!-- Returns Table -->
+    <div class="table-container">
+      <div class="table-header">
+        <h3 class="table-title"><span class="material-icons-round" style="vertical-align:middle; margin-right:8px; font-size:20px">assignment_return</span>Sales Return Requests (${returnsData.length})</h3>
+      </div>
+      ${returnsData.length === 0 ? `<div class="empty-state"><div class="empty-state-icon"><span class="material-icons-round">assignment_return</span></div><h3>No Returns</h3><p>Return requests raised by staff will appear here.</p></div>` : `
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr>
+            <th>Return ID</th><th>Shop</th><th>Staff</th><th>Items</th><th>Return Total</th><th>Reason</th><th>Date</th><th>Status</th><th>Actions</th>
+          </tr></thead>
+          <tbody>
+            ${returnsData.map(ret => {
+              const statusColor = { pending:'#f59e0b', approved:'var(--success)', rejected:'var(--danger)' }[ret.status] || '#888';
+              return `<tr>
+                <td class="table-cell-main">#${ret.id.slice(-6).toUpperCase()}</td>
+                <td>${ret.shopName || '—'}</td>
+                <td>${ret.staffName || '—'}</td>
+                <td>${(ret.items||[]).length} item${(ret.items||[]).length!==1?'s':''}</td>
+                <td class="font-bold" style="color:var(--danger)">${formatCurrency(ret.total)}</td>
+                <td style="max-width:160px; font-size:0.8rem; color:var(--text-muted);">${ret.reason || '—'}</td>
+                <td>${formatDate(ret.createdAt)}</td>
+                <td><span style="background:${statusColor}22; color:${statusColor}; border-radius:100px; padding:3px 10px; font-size:0.75rem; font-weight:600; text-transform:capitalize;">${ret.status}</span></td>
+                <td>
+                  ${ret.status === 'pending' ? `
+                    <div class="btn-group">
+                      <button class="btn btn-sm btn-primary return-approve-btn" data-return-id="${ret.id}" style="background:var(--success); border-color:var(--success);">Approve</button>
+                      <button class="btn btn-sm btn-danger return-reject-btn" data-return-id="${ret.id}">Reject</button>
+                    </div>` : '—'}
+                </td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`}
+    </div>` : `
     <!-- Orders Table -->
     <div class="table-container">
       <div class="table-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
@@ -343,7 +394,7 @@ export function render() {
         <p>${currentTab !== 'all' ? 'No orders with this status.' : 'Orders placed by staff will appear here.'}</p>
       </div>
       `}
-    </div>
+    </div>`}
   `;
 }
 
@@ -456,6 +507,34 @@ export function init() {
     row.addEventListener('click', () => {
       const order = Store.getOrderById(row.dataset.id);
       if (order) showOrderDetail(order);
+    });
+  });
+
+  // Return approve/reject buttons
+  document.querySelectorAll('.return-approve-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const returnId = btn.dataset.returnId;
+      try { Store.updateReturnStatus(returnId, 'approved'); } catch {}
+      updateLocalReturn(returnId, { status: 'approved', resolvedAt: new Date().toISOString() });
+      // credit the ledger
+      const ret = getLocalReturns().find(r => r.id === returnId);
+      if (ret) {
+        try {
+          Store.addLedgerEntry(ret.shopId, ret.total, 'credit', ret.id, `Sales Return approved for Order #${(ret.orderId||'').slice(-6).toUpperCase()}`);
+        } catch {}
+      }
+      Toast.success('Return approved — ledger credited');
+      reRender();
+    });
+  });
+
+  document.querySelectorAll('.return-reject-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const returnId = btn.dataset.returnId;
+      try { Store.updateReturnStatus(returnId, 'rejected'); } catch {}
+      updateLocalReturn(returnId, { status: 'rejected', resolvedAt: new Date().toISOString() });
+      Toast.success('Return rejected');
+      reRender();
     });
   });
 

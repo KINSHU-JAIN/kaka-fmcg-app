@@ -15,8 +15,13 @@ const adminMenuItems = [
     { id: 'orders', label: 'Orders', icon: 'receipt_long', hash: '#/admin/orders' },
     { id: 'ledger', label: 'Retailer Ledger', icon: 'menu_book', hash: '#/admin/ledger' },
   ]},
+  { section: 'Analytics', items: [
+    { id: 'performance', label: 'Performance', icon: 'trending_up', hash: '#/admin/performance' },
+    { id: 'reports', label: 'Reports', icon: 'bar_chart', hash: '#/admin/reports' },
+  ]},
   { section: 'Operations', items: [
     { id: 'routes', label: 'Route Designer', icon: 'route', hash: '#/admin/routes' },
+    { id: 'beat-plan', label: 'Beat Plan', icon: 'calendar_month', hash: '#/admin/beat-plan' },
     { id: 'staff', label: 'Staff', icon: 'group', hash: '#/admin/staff' },
     { id: 'tracking', label: 'Live Tracking', icon: 'satellite_alt', hash: '#/admin/tracking' },
   ]},
@@ -26,9 +31,11 @@ const staffMenuItems = [
   { section: 'Main', items: [
     { id: 'shops', label: 'My Shops', icon: 'store', hash: '#/staff/shops' },
     { id: 'new-order', label: 'New Order', icon: 'add_shopping_cart', hash: '#/staff/new-order' },
+    { id: 'beat-plan', label: "Today's Beat", icon: 'today', hash: '#/staff/beat-plan' },
     { id: 'history', label: 'Order History', icon: 'history', hash: '#/staff/history' },
     { id: 'deliveries', label: 'Deliveries', icon: 'local_shipping', hash: '#/staff/deliveries' },
     { id: 'credit-recovery', label: 'Credit Recovery', icon: 'payments', hash: '#/staff/credit-recovery' },
+    { id: 'returns', label: 'Sales Returns', icon: 'assignment_return', hash: '#/staff/returns' },
   ]},
 ];
 

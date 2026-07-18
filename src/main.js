@@ -23,12 +23,17 @@ const modules = {
   '/admin/staff': () => import('./admin/staff.js'),
   '/admin/tracking': () => import('./admin/tracking.js'),
   '/admin/ledger': () => import('./admin/ledger.js'),
+  '/admin/performance': () => import('./admin/performance.js'),
+  '/admin/reports': () => import('./admin/reports.js'),
+  '/admin/beat-plan': () => import('./admin/beat-plan.js'),
   // Staff
   '/staff/shops': () => import('./staff/shops.js'),
   '/staff/new-order': () => import('./staff/order.js'),
   '/staff/history': () => import('./staff/history.js'),
   '/staff/deliveries': () => import('./staff/deliveries.js'),
   '/staff/credit-recovery': () => import('./staff/credit-recovery.js'),
+  '/staff/beat-plan': () => import('./staff/beat-plan.js'),
+  '/staff/returns': () => import('./staff/returns.js'),
 };
 
 // Page titles
@@ -41,11 +46,16 @@ const pageTitles = {
   '/admin/staff': { title: 'Staff Management', subtitle: 'Manage your team', icon: 'group' },
   '/admin/tracking': { title: 'Staff Tracking', subtitle: 'Live geolocation of delivery personnel', icon: 'satellite_alt' },
   '/admin/ledger': { title: 'Retailer Ledger', subtitle: 'Khata Book accounts & partial payments', icon: 'menu_book' },
+  '/admin/performance': { title: 'Performance', subtitle: 'Salesman performance & monthly targets', icon: 'trending_up' },
+  '/admin/reports': { title: 'Reports', subtitle: 'Sales reports, top products & aging analysis', icon: 'bar_chart' },
+  '/admin/beat-plan': { title: 'Beat Plan', subtitle: 'Schedule daily shop visits per salesman', icon: 'calendar_month' },
   '/staff/shops': { title: 'My Shops', subtitle: 'View and manage shops', icon: 'store' },
   '/staff/new-order': { title: 'New Order', subtitle: 'Take a new order', icon: 'add_shopping_cart' },
   '/staff/history': { title: 'Order History', subtitle: 'View past orders', icon: 'history' },
   '/staff/deliveries': { title: 'My Deliveries', subtitle: 'Manage assigned delivery routes', icon: 'local_shipping' },
   '/staff/credit-recovery': { title: 'Credit Recovery', subtitle: 'Collect payments & settle credit bills route-wise', icon: 'payments' },
+  '/staff/beat-plan': { title: "Today's Beat", subtitle: 'Your shop visit schedule for today', icon: 'today' },
+  '/staff/returns': { title: 'Sales Returns', subtitle: 'Raise and track return requests', icon: 'assignment_return' },
 };
 
 const app = document.getElementById('app');

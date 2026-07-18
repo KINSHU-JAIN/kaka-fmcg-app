@@ -224,7 +224,10 @@ async function initSupabase(fallbackSeedData) {
       { data: orders, error: eOrders },
       { data: routes, error: eRoutes },
       { data: ledgers, error: eLedgers },
-      { data: staffLocations, error: eStaffLocations }
+      { data: staffLocations, error: eStaffLocations },
+      { data: targets, error: eTargets },
+      { data: beatPlans, error: eBeatPlans },
+      { data: returns, error: eReturns }
     ] = await Promise.all([
       supabase.from('firms').select('*'),
       supabase.from('companies').select('*'),
@@ -234,7 +237,10 @@ async function initSupabase(fallbackSeedData) {
       supabase.from('orders').select('*'),
       supabase.from('routes').select('*'),
       supabase.from('ledgers').select('*'),
-      supabase.from('staff_locations').select('*')
+      supabase.from('staff_locations').select('*'),
+      supabase.from('targets').select('*').catch(() => ({ data: [], error: null })),
+      supabase.from('beat_plans').select('*').catch(() => ({ data: [], error: null })),
+      supabase.from('returns').select('*').catch(() => ({ data: [], error: null }))
     ]);
 
     if (eFirms || eCompanies || eProducts || eShops || eStaff || eOrders || eRoutes || eLedgers || eStaffLocations) {
@@ -251,7 +257,10 @@ async function initSupabase(fallbackSeedData) {
       orders: orders ? orders.map(keysToCamel) : [],
       routes: routes ? routes.map(keysToCamel) : [],
       ledgers: ledgers ? ledgers.map(keysToCamel) : [],
-      staffLocations: staffLocations ? staffLocations.map(keysToCamel) : []
+      staffLocations: staffLocations ? staffLocations.map(keysToCamel) : [],
+      targets: targets ? targets.map(keysToCamel) : [],
+      beatPlans: beatPlans ? beatPlans.map(keysToCamel) : [],
+      returns: returns ? returns.map(keysToCamel) : []
     };
     initLedgers();
 
@@ -280,6 +289,7 @@ function handleRealtimeChange(payload) {
   const { table, eventType, new: newRow, old: oldRow } = payload;
   let dataKey = table;
   if (table === 'staff_locations') dataKey = 'staffLocations';
+  if (table === 'beat_plans') dataKey = 'beatPlans';
   
   if (!_data || !_data[dataKey]) return;
 
@@ -942,6 +952,127 @@ function getStats(firmId) {
   };
 }
 
+// ---------- Targets ----------
+function getTargets(firmId) {
+  let t = _data.targets || [];
+  if (firmId) t = t.filter(x => x.firmId === firmId);
+  return t;
+}
+
+function getTargetByStaff(staffId, month) {
+  return (_data.targets || []).find(t => t.staffId === staffId && t.month === month) || null;
+}
+
+function setTarget(staffId, firmId, month, targetAmount) {
+  if (!_data.targets) _data.targets = [];
+  const existing = _data.targets.findIndex(t => t.staffId === staffId && t.month === month && t.firmId === firmId);
+  if (existing !== -1) {
+    _data.targets[existing].targetAmount = targetAmount;
+    if (isSupabaseConfigured) {
+      supabase.from('targets').update({ target_amount: targetAmount }).eq('id', _data.targets[existing].id)
+        .then(({ error }) => { if (error) console.error('Error updating target:', error); });
+    } else { persist(); }
+    return _data.targets[existing];
+  } else {
+    const newTarget = { id: uid(), staffId, firmId, month, targetAmount };
+    _data.targets.push(newTarget);
+    emit('targets:change', _data.targets);
+    if (isSupabaseConfigured) {
+      supabase.from('targets').insert(keysToSnake(newTarget))
+        .then(({ error }) => { if (error) console.error('Error adding target:', error); });
+    } else { persist(); }
+    return newTarget;
+  }
+}
+
+// ---------- Beat Plans ----------
+function getBeatPlans(firmId) {
+  let p = _data.beatPlans || [];
+  if (firmId) p = p.filter(x => x.firmId === firmId);
+  return p;
+}
+
+function getBeatPlanByStaff(staffId, firmId) {
+  return (_data.beatPlans || []).filter(p => p.staffId === staffId && (!firmId || p.firmId === firmId));
+}
+
+function setBeatPlan(staffId, firmId, dayOfWeek, shopIds) {
+  if (!_data.beatPlans) _data.beatPlans = [];
+  const existingIdx = _data.beatPlans.findIndex(p => p.staffId === staffId && p.dayOfWeek === dayOfWeek && p.firmId === firmId);
+  const plan = { id: staffId + '_' + dayOfWeek + '_' + firmId, staffId, firmId, dayOfWeek, shopIds };
+  if (existingIdx !== -1) {
+    _data.beatPlans[existingIdx] = plan;
+    if (isSupabaseConfigured) {
+      supabase.from('beat_plans').upsert(keysToSnake(plan))
+        .then(({ error }) => { if (error) console.error('Error upserting beat plan:', error); });
+    } else { persist(); }
+  } else {
+    _data.beatPlans.push(plan);
+    emit('beatPlans:change', _data.beatPlans);
+    if (isSupabaseConfigured) {
+      supabase.from('beat_plans').upsert(keysToSnake(plan))
+        .then(({ error }) => { if (error) console.error('Error upserting beat plan:', error); });
+    } else { persist(); }
+  }
+  return plan;
+}
+
+function deleteBeatPlan(staffId, firmId, dayOfWeek) {
+  if (!_data.beatPlans) return;
+  const plan = _data.beatPlans.find(p => p.staffId === staffId && p.dayOfWeek === dayOfWeek && p.firmId === firmId);
+  _data.beatPlans = _data.beatPlans.filter(p => !(p.staffId === staffId && p.dayOfWeek === dayOfWeek && p.firmId === firmId));
+  emit('beatPlans:change', _data.beatPlans);
+  if (isSupabaseConfigured && plan) {
+    supabase.from('beat_plans').delete().eq('id', plan.id)
+      .then(({ error }) => { if (error) console.error('Error deleting beat plan:', error); });
+  } else { persist(); }
+}
+
+// ---------- Returns ----------
+function getReturns(filters = {}) {
+  let r = _data.returns || [];
+  if (filters.firmId) r = r.filter(x => x.firmId === filters.firmId);
+  if (filters.staffId) r = r.filter(x => x.staffId === filters.staffId);
+  if (filters.status) r = r.filter(x => x.status === filters.status);
+  return r.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+
+function getReturnById(id) {
+  return (_data.returns || []).find(r => r.id === id) || null;
+}
+
+function addReturn(returnObj) {
+  if (!_data.returns) _data.returns = [];
+  const newReturn = { id: uid(), status: 'pending', createdAt: new Date().toISOString(), ...returnObj };
+  _data.returns.push(newReturn);
+  emit('returns:change', _data.returns);
+  if (isSupabaseConfigured) {
+    supabase.from('returns').insert(keysToSnake(newReturn))
+      .then(({ error }) => { if (error) console.error('Error adding return:', error); });
+  } else { persist(); }
+  return newReturn;
+}
+
+function updateReturnStatus(id, status) {
+  if (!_data.returns) return null;
+  const idx = _data.returns.findIndex(r => r.id === id);
+  if (idx === -1) return null;
+  _data.returns[idx].status = status;
+  if (status === 'approved') {
+    _data.returns[idx].resolvedAt = new Date().toISOString();
+    // Credit the shop's ledger
+    const ret = _data.returns[idx];
+    addLedgerEntry(ret.shopId, ret.total, 'credit', ret.id, `Sales Return approved for Order #${(ret.orderId || '').slice(-6).toUpperCase()}`);
+  }
+  emit('returns:change', _data.returns);
+  if (isSupabaseConfigured) {
+    const updates = { status, resolved_at: _data.returns[idx].resolvedAt || null };
+    supabase.from('returns').update(updates).eq('id', id)
+      .then(({ error }) => { if (error) console.error('Error updating return:', error); });
+  } else { persist(); }
+  return _data.returns[idx];
+}
+
 // ---------- Reset ----------
 function resetData(seedData) {
   _data = seedData;
@@ -1015,6 +1146,20 @@ export const Store = {
   clearSession,
   // Stats
   getStats,
+  // Targets
+  getTargets,
+  getTargetByStaff,
+  setTarget,
+  // Beat Plans
+  getBeatPlans,
+  getBeatPlanByStaff,
+  setBeatPlan,
+  deleteBeatPlan,
+  // Returns
+  getReturns,
+  getReturnById,
+  addReturn,
+  updateReturnStatus,
   // Utility
   reset: resetData,
   uid
