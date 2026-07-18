@@ -377,3 +377,223 @@ export function getWhatsAppShareUrl(order) {
 
   return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
 }
+
+export function printReceipt(entry) {
+  const shop = Store.getShopById(entry.shopId);
+  const firmId = window.__currentFirm || 'firm_ka';
+  const firm = Store.getFirmById(firmId);
+  
+  let paymentMode = 'CASH';
+  if (entry.description.toLowerCase().includes('upi')) paymentMode = 'UPI';
+  
+  let collector = 'Admin';
+  const repMatch = entry.description.match(/by\s+(.+)$/i);
+  if (repMatch) collector = repMatch[1];
+
+  const printWindow = window.open('', '_blank', 'width=800,height=900');
+  if (!printWindow) {
+    alert('Please allow popups to print receipts.');
+    return;
+  }
+
+  const dateStr = new Date(entry.date).toLocaleDateString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric'
+  });
+  const timeStr = new Date(entry.date).toLocaleTimeString('en-IN', {
+    hour: '2-digit', minute: '2-digit', hour12: true
+  });
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <title>Receipt #${entry.id.slice(-6).toUpperCase()}</title>
+      <link rel="preconnect" href="https://fonts.googleapis.com">
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+      <style>
+        * { box-sizing: border-box; }
+        body {
+          font-family: 'Inter', sans-serif;
+          margin: 0; padding: 30px;
+          color: #1e293b; background-color: #fff;
+          print-color-adjust: exact;
+        }
+        .header {
+          display: flex; justify-content: space-between; align-items: flex-start;
+          border-bottom: 2px solid #0f172a; padding-bottom: 20px; margin-bottom: 25px;
+        }
+        .firm-info { flex: 1; }
+        .firm-title { font-size: 26px; font-weight: 800; color: #0f172a; text-transform: uppercase; margin: 0 0 6px 0; }
+        .firm-subtitle { font-size: 12px; color: #64748b; margin: 3px 0; line-height: 1.4; }
+        .receipt-info { text-align: right; flex-shrink: 0; }
+        .receipt-title { font-size: 32px; font-weight: 800; color: #0f172a; margin: 0 0 10px 0; letter-spacing: 1px; }
+        .receipt-meta { font-size: 13px; color: #334155; line-height: 1.5; }
+        .details-box {
+          border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; background: #f8fafc; margin-bottom: 30px;
+        }
+        .details-box h3 {
+          margin: 0 0 12px 0; font-size: 13px; font-weight: 700; text-transform: uppercase;
+          color: #475569; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px;
+        }
+        .details-box p { margin: 6px 0; font-size: 13px; line-height: 1.5; color: #334155; }
+        .details-box p strong { color: #0f172a; }
+        .payment-summary {
+          border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; margin-bottom: 30px;
+          width: 100%; border-collapse: collapse;
+        }
+        .payment-summary th { background: #f1f5f9; padding: 12px; font-size: 12px; text-transform: uppercase; text-align: left; border-bottom: 1px solid #e2e8f0; color: #475569; }
+        .payment-summary td { padding: 12px; font-size: 14px; border-bottom: 1px dashed #e2e8f0; color: #334155; }
+        .totals-container { display: flex; justify-content: flex-end; margin-bottom: 40px; }
+        .totals-table { width: 320px; border-collapse: collapse; }
+        .totals-table td { padding: 8px 12px; font-size: 14px; color: #475569; }
+        .totals-table tr.total-row td {
+          font-weight: 800; font-size: 18px; border-top: 2px solid #0f172a; border-bottom: 2px solid #0f172a; color: #0f172a; padding: 12px;
+        }
+        .signature-row { display: flex; justify-content: space-between; margin-top: 80px; padding: 0 10px; }
+        .signature-box { width: 220px; border-top: 1.5px solid #0f172a; text-align: center; padding-top: 8px; font-size: 13px; font-weight: 500; color: #334155; }
+        .footer { margin-top: 60px; font-size: 12px; text-align: center; color: #94a3b8; border-top: 1px dashed #e2e8f0; padding-top: 20px; }
+        .print-btn-container { position: fixed; bottom: 20px; right: 20px; z-index: 1000; }
+        .print-btn {
+          background-color: #0f172a; color: white; border: none; padding: 12px 24px; font-size: 14px;
+          font-weight: 600; border-radius: 50px; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+          display: flex; align-items: center; gap: 8px; transition: all 0.2s ease;
+        }
+        .print-btn:hover { background-color: #1e293b; transform: translateY(-2px); }
+        @media print { .print-btn-container { display: none; } body { padding: 0; } }
+      </style>
+    </head>
+    <body>
+      <div class="print-btn-container">
+        <button class="print-btn" onclick="window.print()">Print Receipt</button>
+      </div>
+
+      <div class="header">
+        <div class="firm-info">
+          <h1 class="firm-title">${firm.name}</h1>
+          <p class="firm-subtitle" style="font-weight: 600; color: #475569;">${firm.type}</p>
+          <p class="firm-subtitle">${firm.address}</p>
+          <p class="firm-subtitle"><strong>Phone:</strong> ${firm.phone} &nbsp;|&nbsp; ${firm.phone2}</p>
+        </div>
+        <div class="receipt-info">
+          <h2 class="receipt-title">RECEIPT</h2>
+          <div class="receipt-meta">
+            <strong>Receipt #:</strong> #REC-${entry.id.slice(-6).toUpperCase()}<br>
+            <strong>Date:</strong> ${dateStr}<br>
+            <strong>Time:</strong> ${timeStr}<br>
+            <strong>Status:</strong> <span style="font-weight: 700; color: #10b981;">SETTLED</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="details-box">
+        <h3>Received From (Retailer)</h3>
+        <p><strong>Shop Name:</strong> ${shop ? shop.name : 'Unknown Shop'}</p>
+        <p><strong>Proprietor:</strong> ${shop ? shop.ownerName : '—'}</p>
+        <p><strong>Address:</strong> ${shop ? shop.address : '—'}</p>
+        <p><strong>Phone:</strong> ${shop ? shop.phone : '—'}</p>
+      </div>
+
+      <table class="payment-summary">
+        <thead>
+          <tr>
+            <th>Description</th>
+            <th>Payment Mode</th>
+            <th style="text-align: right;">Amount Paid</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>${entry.description}</td>
+            <td style="font-weight: 600;">${paymentMode.toUpperCase()}</td>
+            <td style="text-align: right; font-weight: 700; color: #10b981;">₹${entry.amount.toLocaleString('en-IN')}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="totals-container">
+        <table class="totals-table">
+          <tr>
+            <td>Previous Balance:</td>
+            <td style="text-align: right; font-weight: 500;">₹${(entry.runningBalance + entry.amount).toLocaleString('en-IN')}</td>
+          </tr>
+          <tr>
+            <td>Amount Received:</td>
+            <td style="text-align: right; font-weight: 600; color: #10b981;">-₹${entry.amount.toLocaleString('en-IN')}</td>
+          </tr>
+          <tr class="total-row">
+            <td>Remaining Balance:</td>
+            <td style="text-align: right;">₹${entry.runningBalance.toLocaleString('en-IN')}</td>
+          </tr>
+        </table>
+      </div>
+
+      <div class="signature-row">
+        <div class="signature-box">
+          Customer's Signature
+        </div>
+        <div class="signature-box">
+          Collected By: <strong>${collector}</strong><br>
+          <span style="font-size: 11px; color: #64748b; font-weight: normal;">(For ${firm.name})</span>
+        </div>
+      </div>
+
+      <div class="footer">
+        <p>Thank you for your prompt settlement! Your statement is updated.</p>
+        <p style="font-size: 10px; color: #cbd5e1; margin-top: 10px;">System Generated Receipt · Kaka FMCG</p>
+      </div>
+
+      <script>
+        window.onload = function() {
+          setTimeout(function() { window.print(); }, 300);
+        }
+      </script>
+    </body>
+    </html>
+  `;
+
+  printWindow.document.open();
+  printWindow.document.write(html);
+  printWindow.document.close();
+}
+
+export function getWhatsAppReceiptUrl(entry) {
+  const shop = Store.getShopById(entry.shopId);
+  const firmId = window.__currentFirm || 'firm_ka';
+  const firm = Store.getFirmById(firmId);
+  
+  const phone = shop?.phone || '';
+  let cleanPhone = phone.replace(/\D/g, '');
+  if (cleanPhone.length === 10) {
+    cleanPhone = '91' + cleanPhone;
+  }
+
+  let paymentMode = 'CASH';
+  if (entry.description.toLowerCase().includes('upi')) paymentMode = 'UPI';
+
+  let collector = 'Admin';
+  const repMatch = entry.description.match(/by\s+(.+)$/i);
+  if (repMatch) collector = repMatch[1];
+
+  const dateStr = new Date(entry.date).toLocaleDateString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric'
+  });
+
+  const message = `*PAYMENT RECEIPT* - *${firm?.name || 'Kaka FMCG'}*\n` +
+    `-----------------------------------\n` +
+    `*Receipt #:* #REC-${entry.id.slice(-6).toUpperCase()}\n` +
+    `*Date:* ${dateStr}\n` +
+    `*Received From:* ${shop?.name || 'Customer'}\n` +
+    `*Collector:* ${collector}\n` +
+    `-----------------------------------\n` +
+    `*Paid Amount:* ₹${entry.amount.toLocaleString('en-IN')}\n` +
+    `*Payment Mode:* ${paymentMode}\n` +
+    `-----------------------------------\n` +
+    `*Previous Balance:* ₹${(entry.runningBalance + entry.amount).toLocaleString('en-IN')}\n` +
+    `*Remaining Balance:* ₹${entry.runningBalance.toLocaleString('en-IN')}\n` +
+    `-----------------------------------\n` +
+    `Your account statement is updated. Thank you for your payment!`;
+
+  return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+}

@@ -5,6 +5,7 @@
 import { Store } from '../data/store.js';
 import { Toast } from '../components/toast.js';
 import { Modal } from '../components/modal.js';
+import { printReceipt, getWhatsAppReceiptUrl } from '../components/invoice.js';
 
 // ---------- State ----------
 let selectedRouteId = null;
@@ -308,6 +309,78 @@ export function render() {
 
 // ---------- Settle Payments Modal Function ----------
 
+function showReceiptModal(entry) {
+  const shop = Store.getShopById(entry.shopId);
+  const firmId = getFirmId();
+  const firm = Store.getFirmById(firmId);
+  let paymentMode = 'CASH';
+  if (entry.description.toLowerCase().includes('upi')) paymentMode = 'UPI';
+
+  let collector = 'Admin';
+  const repMatch = entry.description.match(/by\s+(.+)$/i);
+  if (repMatch) collector = repMatch[1];
+
+  const content = `
+    <div style="text-align:center; padding:10px 0;">
+      <span class="material-icons-round" style="font-size:48px; color:var(--success); margin-bottom:8px;">check_circle</span>
+      <h3 style="margin:0 0 4px 0; font-size:1.2rem; font-weight:700;">Payment Recorded!</h3>
+      <p style="color:var(--text-muted); font-size:0.85rem; margin:0 0 20px 0;">Receipt #REC-${entry.id.slice(-6).toUpperCase()}</p>
+    </div>
+
+    <div class="card" style="background:var(--bg-secondary); border-color:var(--border); padding:16px; margin-bottom:20px; font-size:0.9rem;">
+      <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+        <span style="color:var(--text-muted);">Shop Name:</span>
+        <strong style="color:var(--text-primary);">${shop?.name || 'Unknown'}</strong>
+      </div>
+      <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+        <span style="color:var(--text-muted);">Paid Amount:</span>
+        <strong style="color:var(--success); font-size:1.05rem;">${formatCurrency(entry.amount)}</strong>
+      </div>
+      <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+        <span style="color:var(--text-muted);">Payment Mode:</span>
+        <strong style="color:var(--text-primary);">${paymentMode}</strong>
+      </div>
+      <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+        <span style="color:var(--text-muted);">Collector Rep:</span>
+        <strong style="color:var(--text-primary);">${collector}</strong>
+      </div>
+      <hr style="border-top:1px dashed var(--border); margin:12px 0;" />
+      <div style="display:flex; justify-content:space-between;">
+        <span style="color:var(--text-muted);">Remaining Balance:</span>
+        <strong style="color:var(--danger);">${formatCurrency(entry.runningBalance)}</strong>
+      </div>
+    </div>
+
+    <div style="display:flex; justify-content:flex-end; gap:10px;">
+      <button class="btn btn-secondary" id="print-receipt-btn" style="display:flex; align-items:center; gap:6px;">
+        <span class="material-icons-round" style="font-size:18px;">print</span> Print Receipt
+      </button>
+      <a href="${getWhatsAppReceiptUrl(entry)}" target="_blank" class="btn btn-primary" id="share-receipt-whatsapp-btn" style="display:flex; align-items:center; gap:6px; background-color:#25d366; border-color:#25d366; color:white; text-decoration:none;">
+        <span class="material-icons-round" style="font-size:18px;">share</span> Share WhatsApp
+      </a>
+    </div>
+  `;
+
+  Modal.show({
+    title: 'Payment Receipt',
+    content,
+    hideFooter: true,
+    onCancel: () => {
+      reRender();
+    }
+  });
+
+  // Bind buttons
+  setTimeout(() => {
+    const printBtn = document.getElementById('print-receipt-btn');
+    if (printBtn) {
+      printBtn.addEventListener('click', () => {
+        printReceipt(entry);
+      });
+    }
+  }, 50);
+}
+
 function openCollectModal(shopId) {
   const shop = Store.getShopById(shopId);
   const outstandingObj = Store.getShopOutstanding(shopId);
@@ -370,10 +443,10 @@ function openCollectModal(shopId) {
       const mode = activeTab ? activeTab.dataset.mode : 'cash';
       const staffId = getStaffId();
 
-      Store.addLedgerPayment(shopId, amount, mode, staffId);
+      const entry = Store.addLedgerPayment(shopId, amount, mode, staffId);
       Toast.success(`Recovery payment of ${formatCurrency(amount)} recorded successfully!`);
       Modal.hide();
-      reRender();
+      showReceiptModal(entry);
     }
   });
 
