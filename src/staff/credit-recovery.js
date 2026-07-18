@@ -446,6 +446,15 @@ function openCollectModal(shopId) {
       const entry = Store.addLedgerPayment(shopId, amount, mode, staffId);
       Toast.success(`Recovery payment of ${formatCurrency(amount)} recorded successfully!`);
       Modal.hide();
+      
+      // Automatically send payment receipt to shop owner's registered WhatsApp
+      try {
+        const waUrl = getWhatsAppReceiptUrl(entry);
+        window.open(waUrl, '_blank');
+      } catch (err) {
+        console.error('Failed to auto-open WhatsApp:', err);
+      }
+
       showReceiptModal(entry);
     }
   });

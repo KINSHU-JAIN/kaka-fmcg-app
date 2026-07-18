@@ -5,6 +5,7 @@
 import { Store } from '../data/store.js';
 import { Toast } from '../components/toast.js';
 import { Modal } from '../components/modal.js';
+import { getWhatsAppShareUrl } from '../components/invoice.js';
 
 // ---------- Local Cart State ----------
 let cart = []; // [{productId, name, price, qty, subtotal}]
@@ -792,6 +793,14 @@ function submitOrder(paymentMode, paymentStatus, shop, items, total, notes, sess
   // Clear cart immediately so that duplicate submissions cannot occur
   clearCart();
   refreshAll();
+
+  // Automatically send invoice to shop owner's registered WhatsApp
+  try {
+    const waUrl = getWhatsAppShareUrl(order);
+    window.open(waUrl, '_blank');
+  } catch (err) {
+    console.error('Failed to auto-open WhatsApp:', err);
+  }
 
   // Show success modal with navigation options
   Modal.show({
