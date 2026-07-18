@@ -15,6 +15,12 @@ function getRouteName(shopId) {
   return route ? route.name : null;
 }
 
+function getRouteIdForShop(shopId) {
+  const routes = Store.getRoutes();
+  const route = routes.find(r => (r.shopIds || []).includes(shopId));
+  return route ? route.id : null;
+}
+
 function shopCard(shop) {
   const routeName = getRouteName(shop.id);
   return `
@@ -57,6 +63,9 @@ function shopCard(shop) {
 }
 
 function shopFormContent(shop = null) {
+  const routes = Store.getRoutes(window.__currentFirm || 'firm_ka');
+  const shopRouteId = shop ? (shop.routeId || getRouteIdForShop(shop.id)) : '';
+
   return `
     <div class="form-group">
       <label class="form-label">Shop Name</label>
@@ -75,6 +84,17 @@ function shopFormContent(shop = null) {
     <div class="form-group">
       <label class="form-label">Address</label>
       <textarea class="form-input form-textarea" id="shop-address" placeholder="Full address" style="min-height:60px;">${shop ? shop.address : ''}</textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Assigned Route</label>
+      <select class="form-select" id="shop-route-id" style="width:100%; padding:10px; border-radius:var(--radius-md); border:1px solid var(--border); background:var(--bg-input); color:var(--text-primary);">
+        <option value="">-- No Route (Unassigned) --</option>
+        ${routes.map(r => `
+          <option value="${r.id}" ${r.id === shopRouteId ? 'selected' : ''}>
+            ${r.name}
+          </option>
+        `).join('')}
+      </select>
     </div>`;
 }
 
@@ -83,13 +103,14 @@ function validateShopForm() {
   const owner = document.getElementById('shop-owner').value.trim();
   const phone = document.getElementById('shop-phone').value.trim();
   const address = document.getElementById('shop-address').value.trim();
+  const routeId = document.getElementById('shop-route-id').value || null;
 
   if (!name) { Toast.error('Shop name is required'); return null; }
   if (!owner) { Toast.error('Owner name is required'); return null; }
   if (!phone) { Toast.error('Phone number is required'); return null; }
   if (!address) { Toast.error('Address is required'); return null; }
 
-  return { name, ownerName: owner, phone, address };
+  return { name, ownerName: owner, phone, address, routeId };
 }
 
 // ---------- Render ----------
@@ -246,7 +267,15 @@ function openAddModal() {
       const data = validateShopForm();
       if (!data) return;
 
-      Store.addShop(data);
+      const newShop = Store.addShop(data);
+      if (data.routeId) {
+        const route = Store.getRouteById(data.routeId);
+        if (route) {
+          const updatedShopIds = [...(route.shopIds || []), newShop.id];
+          Store.updateRoute(route.id, { shopIds: updatedShopIds });
+        }
+      }
+
       Modal.hide();
       Toast.success(`"${data.name}" added successfully`);
 
@@ -272,7 +301,28 @@ function openEditModal(shopId) {
       const data = validateShopForm();
       if (!data) return;
 
+      const oldRouteId = shop.routeId || getRouteIdForShop(shopId);
       Store.updateShop(shopId, data);
+
+      if (data.routeId !== oldRouteId) {
+        // Remove from old route
+        if (oldRouteId) {
+          const oldRoute = Store.getRouteById(oldRouteId);
+          if (oldRoute) {
+            const updatedShopIds = (oldRoute.shopIds || []).filter(id => id !== shopId);
+            Store.updateRoute(oldRoute.id, { shopIds: updatedShopIds });
+          }
+        }
+        // Add to new route
+        if (data.routeId) {
+          const newRoute = Store.getRouteById(data.routeId);
+          if (newRoute) {
+            const updatedShopIds = [...(newRoute.shopIds || []), shopId];
+            Store.updateRoute(newRoute.id, { shopIds: updatedShopIds });
+          }
+        }
+      }
+
       Modal.hide();
       Toast.success(`"${data.name}" updated`);
 
