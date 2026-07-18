@@ -31,7 +31,7 @@ dist-ssr/
 *.sw?
 
 # Local environment files
-.env
+# .env (Uncommented to allow Vercel build to see the public anon keys)
 .env.local
 .env.development.local
 .env.test.local
