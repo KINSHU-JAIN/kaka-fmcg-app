@@ -303,6 +303,9 @@ function openCollectPaymentModal() {
         return;
       }
 
+      // Open blank window immediately on user gesture to avoid popup blocker
+      const waWindow = window.open('about:blank', '_blank');
+
       const activeTab = document.querySelector('#ledger-pay-tabs .ledger-pay-tab.active');
       const mode = activeTab ? activeTab.dataset.mode : 'cash';
 
@@ -313,9 +316,14 @@ function openCollectPaymentModal() {
       // Automatically send payment receipt to shop owner's registered WhatsApp
       try {
         const waUrl = getWhatsAppReceiptUrl(entry);
-        window.open(waUrl, '_blank');
+        if (waWindow) {
+          waWindow.location.href = waUrl;
+        } else {
+          window.open(waUrl, '_blank');
+        }
       } catch (err) {
         console.error('Failed to auto-open WhatsApp:', err);
+        if (waWindow) waWindow.close();
       }
 
       showReceiptModal(entry);

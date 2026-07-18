@@ -769,12 +769,13 @@ async function handlePlaceOrder() {
   const confirmBtn = document.getElementById('final-confirm-btn');
   if (confirmBtn) {
     confirmBtn.addEventListener('click', () => {
-      submitOrder('credit', 'unpaid', shop, items, total, notes, session);
+      const waWindow = window.open('about:blank', '_blank');
+      submitOrder('credit', 'unpaid', shop, items, total, notes, session, waWindow);
     });
   }
 }
 
-function submitOrder(paymentMode, paymentStatus, shop, items, total, notes, session) {
+function submitOrder(paymentMode, paymentStatus, shop, items, total, notes, session, waWindow = null) {
   const order = Store.addOrder({
     shopId: selectedShopId,
     shopName: shop ? shop.name : '',
@@ -797,9 +798,14 @@ function submitOrder(paymentMode, paymentStatus, shop, items, total, notes, sess
   // Automatically send invoice to shop owner's registered WhatsApp
   try {
     const waUrl = getWhatsAppShareUrl(order);
-    window.open(waUrl, '_blank');
+    if (waWindow) {
+      waWindow.location.href = waUrl;
+    } else {
+      window.open(waUrl, '_blank');
+    }
   } catch (err) {
     console.error('Failed to auto-open WhatsApp:', err);
+    if (waWindow) waWindow.close();
   }
 
   // Show success modal with navigation options
