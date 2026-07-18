@@ -334,7 +334,7 @@ export function printInvoice(order) {
   printWindow.document.close();
 }
 
-export function getWhatsAppShareUrl(order) {
+export function getWhatsAppShareUrl(order, useProtocol = false) {
   const shop = Store.getShopById(order.shopId);
   const firm = Store.getFirmById(order.firmId);
   const items = order.items || [];
@@ -375,6 +375,9 @@ export function getWhatsAppShareUrl(order) {
     `View/Print Invoice & Pay Online: ${onlineInvoiceUrl}\n\n` +
     `Thank you for your business!`;
 
+  if (useProtocol) {
+    return `whatsapp://send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`;
+  }
   return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
 }
 
@@ -558,7 +561,7 @@ export function printReceipt(entry) {
   printWindow.document.close();
 }
 
-export function getWhatsAppReceiptUrl(entry) {
+export function getWhatsAppReceiptUrl(entry, useProtocol = false) {
   const shop = Store.getShopById(entry.shopId);
   const firmId = window.__currentFirm || 'firm_ka';
   const firm = Store.getFirmById(firmId);
@@ -595,5 +598,8 @@ export function getWhatsAppReceiptUrl(entry) {
     `-----------------------------------\n` +
     `Your account statement is updated. Thank you for your payment!`;
 
+  if (useProtocol) {
+    return `whatsapp://send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`;
+  }
   return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
 }

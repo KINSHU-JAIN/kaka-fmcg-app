@@ -303,9 +303,6 @@ function openCollectPaymentModal() {
         return;
       }
 
-      // Open blank window immediately on user gesture to avoid popup blocker
-      const waWindow = window.open('about:blank', '_blank');
-
       const activeTab = document.querySelector('#ledger-pay-tabs .ledger-pay-tab.active');
       const mode = activeTab ? activeTab.dataset.mode : 'cash';
 
@@ -313,17 +310,12 @@ function openCollectPaymentModal() {
       Toast.success(`Payment of ${formatCurrency(amount)} recorded successfully!`);
       Modal.hide();
 
-      // Automatically send payment receipt to shop owner's registered WhatsApp
+      // Automatically launch native WhatsApp on user's device (without opening a new browser tab)
       try {
-        const waUrl = getWhatsAppReceiptUrl(entry);
-        if (waWindow) {
-          waWindow.location.href = waUrl;
-        } else {
-          window.open(waUrl, '_blank');
-        }
+        const waUrl = getWhatsAppReceiptUrl(entry, true);
+        window.location.href = waUrl;
       } catch (err) {
         console.error('Failed to auto-open WhatsApp:', err);
-        if (waWindow) waWindow.close();
       }
 
       showReceiptModal(entry);
