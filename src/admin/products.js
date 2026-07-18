@@ -126,7 +126,11 @@ function renderProductRow(product) {
         <div>${product.name}</div>
         ${tierInfo}
       </td>
-      <td class="truncate" style="max-width:150px; display:flex; align-items:center; gap:6px;">${company ? `${renderCompanyIcon(company.icon, '20px')} ${companyName}` : companyName}</td>
+      <td>
+        <div style="display:flex; align-items:center; gap:6px;">
+          ${company ? `${renderCompanyIcon(company.icon, '20px')} <span>${companyName}</span>` : companyName}
+        </div>
+      </td>
       <td>
         <span class="inline-edit-price" data-id="${product.id}" data-field="mrp" title="Click to edit">
           ${formatCurrency(product.mrp)}
