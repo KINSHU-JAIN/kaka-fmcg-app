@@ -82,6 +82,8 @@ create table orders (
     total numeric not null,
     status text default 'pending',
     created_at timestamptz default now(),
+    confirmed_at timestamptz,
+    delivered_at timestamptz,
     payment_mode text,
     payment_status text,
     notes text,

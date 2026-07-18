@@ -680,7 +680,8 @@ function updateOrderStatus(id, status) {
   emit('orders:change', _data.orders);
 
   if (isSupabaseConfigured) {
-    supabase.from('orders').update(keysToSnake(updates)).eq('id', id)
+    const dbUpdates = { status }; // Only status field is updated in DB
+    supabase.from('orders').update(keysToSnake(dbUpdates)).eq('id', id)
       .then(({ error }) => { if (error) console.error('Error updating order status:', error); });
   } else {
     persist();
@@ -720,7 +721,11 @@ function updateOrder(id, updates) {
   emit('orders:change', _data.orders);
 
   if (isSupabaseConfigured) {
-    supabase.from('orders').update(keysToSnake(updates)).eq('id', id)
+    const dbUpdates = { ...updates };
+    delete dbUpdates.deliveredAt;
+    delete dbUpdates.confirmedAt;
+    
+    supabase.from('orders').update(keysToSnake(dbUpdates)).eq('id', id)
       .then(({ error }) => { if (error) console.error('Error updating order:', error); });
   } else {
     persist();
