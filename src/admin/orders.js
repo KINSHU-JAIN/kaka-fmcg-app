@@ -221,8 +221,12 @@ export function render() {
   // Filter by date if selected
   if (selectedDate) {
     orders = orders.filter(o => {
-      const orderDate = new Date(o.createdAt).toISOString().split('T')[0];
-      return orderDate === selectedDate;
+      const d = new Date(o.createdAt);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const localDateStr = `${year}-${month}-${day}`;
+      return localDateStr === selectedDate;
     });
   }
 
