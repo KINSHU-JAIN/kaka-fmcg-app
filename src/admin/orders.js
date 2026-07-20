@@ -508,13 +508,16 @@ export function init() {
   document.querySelectorAll('.return-approve-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const returnId = btn.dataset.returnId;
+      const firmId = getFirmId();
       const returns = Store.getReturns({ firmId });
       const ret = returns.find(r => r.id === returnId);
       Store.updateReturnStatus(returnId, 'approved');
       if (ret) {
         try {
           Store.addLedgerEntry(ret.shopId, ret.total, 'credit', ret.id, `Sales Return approved for Order #${(ret.orderId||'').slice(-6).toUpperCase()}`);
-        } catch {}
+        } catch (e) {
+          console.error('Ledger credit error:', e);
+        }
       }
       Toast.success('Return approved — ledger credited');
       reRender();
