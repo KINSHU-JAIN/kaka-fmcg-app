@@ -238,35 +238,55 @@ function generateNewOtp(emailAddress) {
   if (firstInput) firstInput.focus();
 }
 
-function attemptStep1(username, password) {
+async function attemptStep1(username, password) {
   const errorEl = document.getElementById('login-error-step1');
+  const submitBtn = document.querySelector('#login-form-step1 [type="submit"]');
+
   if (!username || !password) {
     if (errorEl) errorEl.textContent = 'Enter username and password.';
     return;
   }
 
-  const result = Store.authenticate(username, password);
-  if (result) {
-    if (result.role === 'admin' && result.requires2fa) {
-      adminSessionData = result;
-      // Transition to Step 2
-      goToStep(2);
-      setTimeout(() => {
-        const emailInput = document.getElementById('login-email');
-        if (emailInput) {
-          emailInput.focus();
-          emailInput.select();
-        }
-      }, 400);
+  // Show loading state
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="material-icons-round" style="animation:spin 1s linear infinite;font-size:18px;">sync</span> Verifying...';
+  }
+  if (errorEl) errorEl.textContent = '';
+
+  try {
+    const result = await Store.authenticateAsync(username, password);
+    if (result) {
+      if (result.blocked) {
+        if (errorEl) errorEl.textContent = 'Your account has been blocked. Contact admin.';
+        shakeCard();
+        return;
+      }
+      if (result.role === 'admin' && result.requires2fa) {
+        adminSessionData = result;
+        goToStep(2);
+        setTimeout(() => {
+          const emailInput = document.getElementById('login-email');
+          if (emailInput) { emailInput.focus(); emailInput.select(); }
+        }, 400);
+      } else {
+        Store.setSession(result);
+        window.location.hash = '#/staff/shops';
+        Toast.success(`Welcome, ${result.user.name}!`);
+      }
     } else {
-      // Direct login for staff
-      Store.setSession(result);
-      window.location.hash = '#/staff/shops';
-      Toast.success(`Welcome, ${result.user.name}!`);
+      if (errorEl) errorEl.textContent = 'Invalid username or password.';
+      shakeCard();
     }
-  } else {
-    if (errorEl) errorEl.textContent = 'Invalid username or password.';
+  } catch (err) {
+    console.error('Login error:', err);
+    if (errorEl) errorEl.textContent = 'Connection error. Check your internet and try again.';
     shakeCard();
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<span class="material-icons-round">login</span> Proceed';
+    }
   }
 }
 
@@ -356,6 +376,10 @@ export function init() {
         40% { transform: translateX(10px); }
         60% { transform: translateX(-6px); }
         80% { transform: translateX(6px); }
+      }
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
       }
       @keyframes fadeIn {
         from { opacity: 0; transform: translateY(8px); }

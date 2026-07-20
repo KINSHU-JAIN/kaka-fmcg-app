@@ -892,8 +892,9 @@ function authenticate(username, password) {
     return { role: 'admin', requires2fa: true, user: { name: 'Kaka', id: 'admin' } };
   }
 
-  // Check staff
-  const staff = (_data.staff || []).find(s => {
+  // Check staff from in-memory data
+  const staffList = _data ? (_data.staff || []) : [];
+  const staff = staffList.find(s => {
     const sUser = (s.username || s.name || '').trim().toLowerCase();
     const sPass = (s.password || s.pin || '').trim();
     return sUser === u && sPass === p;
@@ -908,20 +909,83 @@ function authenticate(username, password) {
   return null;
 }
 
+// Async version — queries Supabase directly so it works on any device even before full sync
+async function authenticateAsync(username, password) {
+  const u = (username || '').trim().toLowerCase();
+  const p = (password || '').trim();
+
+  // Check admin first (hardcoded, always works)
+  if (u === 'kaka' && p === 'Kaka@123') {
+    return { role: 'admin', requires2fa: true, user: { name: 'Kaka', id: 'admin' } };
+  }
+
+  // Try local in-memory staff first (fast path)
+  const localResult = authenticate(username, password);
+  if (localResult) return localResult;
+
+  // Fallback: query Supabase directly so any device can log in
+  if (isSupabaseConfigured) {
+    try {
+      const { data: staffRows, error } = await supabase
+        .from('staff')
+        .select('*')
+        .or(`username.eq.${u},name.ilike.${u}`);
+
+      if (!error && staffRows && staffRows.length > 0) {
+        const staff = staffRows.map(keysToCamel).find(s => {
+          const sUser = (s.username || s.name || '').trim().toLowerCase();
+          const sPass = (s.password || s.pin || '').trim();
+          return sUser === u && sPass === p;
+        });
+        if (staff) {
+          // Merge into local data so subsequent checks work
+          if (_data) {
+            const exists = (_data.staff || []).some(s => s.id === staff.id);
+            if (!exists) _data.staff = [...(_data.staff || []), staff];
+          }
+          if (staff.isBlocked) {
+            return { role: 'staff', blocked: true, user: { name: staff.name, id: staff.id } };
+          }
+          return { role: 'staff', user: { name: staff.name, id: staff.id } };
+        }
+      }
+    } catch (err) {
+      console.warn('Supabase auth fallback failed:', err);
+    }
+  }
+
+  return null;
+}
+
 function getSession() {
   try {
-    const raw = sessionStorage.getItem('kaka_session');
-    return raw ? JSON.parse(raw) : null;
+    // Try localStorage first (persists across tabs and browser restarts)
+    const raw = localStorage.getItem('kaka_session');
+    if (raw) return JSON.parse(raw);
+    // Fallback: sessionStorage (for legacy compatibility)
+    const rawSS = sessionStorage.getItem('kaka_session');
+    if (rawSS) {
+      const parsed = JSON.parse(rawSS);
+      // Migrate to localStorage
+      localStorage.setItem('kaka_session', rawSS);
+      sessionStorage.removeItem('kaka_session');
+      return parsed;
+    }
+    return null;
   } catch {
     return null;
   }
 }
 
 function setSession(session) {
-  sessionStorage.setItem('kaka_session', JSON.stringify(session));
+  const val = JSON.stringify(session);
+  localStorage.setItem('kaka_session', val);
+  // Keep sessionStorage in sync for any legacy code
+  try { sessionStorage.setItem('kaka_session', val); } catch {}
 }
 
 function clearSession() {
+  localStorage.removeItem('kaka_session');
   sessionStorage.removeItem('kaka_session');
 }
 
@@ -1141,6 +1205,7 @@ export const Store = {
   getAdminPin,
   setAdminPin,
   authenticate,
+  authenticateAsync,
   getSession,
   setSession,
   clearSession,
