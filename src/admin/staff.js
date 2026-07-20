@@ -38,52 +38,23 @@ function getStaffFormHtml(staff = null) {
   `;
 }
 
-function renderStaffRow(staffMember) {
-  const orderCount = getOrderCountForStaff(staffMember.id);
-  const isBlocked = !!staffMember.isBlocked;
-
-  return `
-    <tr style="${isBlocked ? 'opacity: 0.6; background: var(--danger-light);' : ''}">
-      <td class="table-cell-main">
-        <div class="flex items-center gap-sm">
-          <div style="width:36px; height:36px; border-radius:var(--radius-full); background: ${isBlocked ? 'var(--text-dim)' : 'linear-gradient(135deg, var(--accent-gold-light), var(--accent-blue-light))'}; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.85rem; color: ${isBlocked ? '#fff' : 'var(--accent-gold)'}; flex-shrink:0">
-            ${staffMember.name.charAt(0).toUpperCase()}
-          </div>
-          <div>
-            <div style="font-weight:600; text-decoration: ${isBlocked ? 'line-through' : 'none'};">${staffMember.name}</div>
-            ${isBlocked ? `<span class="badge badge-danger" style="font-size:0.55rem; padding:2px 6px; margin-top:2px; text-transform:none;">Blocked</span>` : ''}
-          </div>
-        </div>
-      </td>
-      <td>${staffMember.phone || '<span class="text-muted">—</span>'}</td>
-      <td>${staffMember.username || staffMember.name.toLowerCase()}</td>
-      <td>${staffMember.password || staffMember.pin || '5678'}</td>
-      <td>
-        <span class="badge badge-info">${orderCount}</span>
-      </td>
-      <td>
-        <div class="btn-group">
-          <button class="btn-icon staff-block-btn" data-id="${staffMember.id}" title="${isBlocked ? 'Unblock Worker' : 'Block Worker'}" style="color: ${isBlocked ? 'var(--success)' : 'var(--danger)'}">
-            <span class="material-icons-round" style="font-size:18px">${isBlocked ? 'lock_open' : 'lock'}</span>
-          </button>
-          <button class="btn-icon staff-edit-btn" data-id="${staffMember.id}" title="Edit" ${isBlocked ? 'disabled style="opacity:0.3; cursor:not-allowed;"' : ''}>
-            <span class="material-icons-round" style="font-size:18px">edit</span>
-          </button>
-          <button class="btn-icon staff-delete-btn" data-id="${staffMember.id}" title="Delete" style="color:var(--danger)">
-            <span class="material-icons-round" style="font-size:18px">delete</span>
-          </button>
-        </div>
-      </td>
-    </tr>
-  `;
-}
 
 export function render() {
   const staff = Store.getStaff();
   const adminPin = Store.getAdminPin();
 
   return `
-    <!-- Staff Table -->
+    <style>
+      @media (max-width: 640px) {
+        .staff-table-wrap { display: none !important; }
+        .staff-cards-wrap { display: flex !important; }
+      }
+      @media (min-width: 641px) {
+        .staff-table-wrap { display: block !important; }
+        .staff-cards-wrap { display: none !important; }
+      }
+    </style>
+
     <div class="table-container mb-lg">
       <div class="table-header">
         <h3 class="table-title">
@@ -95,64 +66,142 @@ export function render() {
           Add Staff
         </button>
       </div>
-      ${staff.length > 0 ? `
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Phone</th>
-            <th>Username</th>
-            <th>Password</th>
-            <th>Orders</th>
-            <th style="width:140px">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${staff.map(s => renderStaffRow(s)).join('')}
-        </tbody>
-      </table>
-      ` : `
-      <div class="empty-state">
-        <div class="empty-state-icon">
-          <span class="material-icons-round">groups</span>
+
+      ${staff.length === 0 ? `
+        <div class="empty-state">
+          <div class="empty-state-icon"><span class="material-icons-round">groups</span></div>
+          <h3>No staff members</h3>
+          <p>Add delivery staff so they can log in and take orders.</p>
+          <button class="btn btn-primary" id="empty-add-staff-btn">
+            <span class="material-icons-round">person_add</span> Add Staff
+          </button>
+        </div>` : `
+
+        <!-- TABLE VIEW (tablet / desktop) -->
+        <div class="staff-table-wrap" style="overflow-x:auto;">
+          <table style="min-width:600px; width:100%;">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>Username</th>
+                <th>Password</th>
+                <th>Orders</th>
+                <th style="width:130px; text-align:center;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${staff.map(s => {
+                const orderCount = getOrderCountForStaff(s.id);
+                const isBlocked = !!s.isBlocked;
+                return `
+                  <tr style="${isBlocked ? 'opacity:0.6; background:var(--danger-light);' : ''}">
+                    <td>
+                      <div style="display:flex; align-items:center; gap:10px;">
+                        <div style="width:36px; height:36px; border-radius:50%; background:${isBlocked ? 'var(--text-dim)' : 'linear-gradient(135deg, var(--accent-gold-light), var(--accent-blue-light))'}; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.85rem; color:${isBlocked ? '#fff' : 'var(--accent-gold)'}; flex-shrink:0;">
+                          ${s.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <div style="font-weight:600; text-decoration:${isBlocked ? 'line-through' : 'none'};">${s.name}</div>
+                          ${isBlocked ? `<span class="badge badge-danger" style="font-size:0.55rem; padding:2px 6px; margin-top:2px;">Blocked</span>` : ''}
+                        </div>
+                      </div>
+                    </td>
+                    <td>${s.phone || '<span class="text-muted">—</span>'}</td>
+                    <td><code style="font-size:0.85rem;">${s.username || s.name.toLowerCase()}</code></td>
+                    <td><code style="font-size:0.85rem;">${s.password || s.pin || '5678'}</code></td>
+                    <td><span class="badge badge-info">${orderCount}</span></td>
+                    <td>
+                      <div style="display:flex; gap:4px; justify-content:center;">
+                        <button class="btn-icon staff-block-btn" data-id="${s.id}" title="${isBlocked ? 'Unblock' : 'Block'}" style="color:${isBlocked ? 'var(--success)' : 'var(--danger)'}">
+                          <span class="material-icons-round" style="font-size:18px">${isBlocked ? 'lock_open' : 'lock'}</span>
+                        </button>
+                        <button class="btn-icon staff-edit-btn" data-id="${s.id}" title="Edit" ${isBlocked ? 'disabled style="opacity:0.3; cursor:not-allowed;"' : ''}>
+                          <span class="material-icons-round" style="font-size:18px">edit</span>
+                        </button>
+                        <button class="btn-icon staff-delete-btn" data-id="${s.id}" title="Delete" style="color:var(--danger)">
+                          <span class="material-icons-round" style="font-size:18px">delete</span>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
         </div>
-        <h3>No staff members</h3>
-        <p>Add delivery staff so they can log in and take orders.</p>
-        <button class="btn btn-primary" id="empty-add-staff-btn">
-          <span class="material-icons-round">person_add</span>
-          Add Staff
-        </button>
-      </div>
+
+        <!-- CARD VIEW (mobile) -->
+        <div class="staff-cards-wrap" style="flex-direction:column; gap:12px; padding:12px 0;">
+          ${staff.map(s => {
+            const orderCount = getOrderCountForStaff(s.id);
+            const isBlocked = !!s.isBlocked;
+            return `
+              <div style="background:var(--bg-base); border:1px solid var(--border); border-radius:var(--radius-md); padding:14px; ${isBlocked ? 'opacity:0.65;' : ''}">
+                <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+                  <div style="width:44px; height:44px; border-radius:50%; background:${isBlocked ? 'var(--text-dim)' : 'linear-gradient(135deg, var(--accent-gold-light), var(--accent-blue-light))'}; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:1rem; color:${isBlocked ? '#fff' : 'var(--accent-gold)'}; flex-shrink:0;">
+                    ${s.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div style="flex:1; min-width:0;">
+                    <div style="font-weight:700; font-size:0.95rem; color:var(--text-primary); text-decoration:${isBlocked ? 'line-through' : 'none'};">${s.name}</div>
+                    ${isBlocked ? `<span class="badge badge-danger" style="font-size:0.6rem; margin-top:2px;">Blocked</span>` : `<span class="badge badge-info" style="font-size:0.65rem; margin-top:2px;">${orderCount} orders</span>`}
+                  </div>
+                  <div style="display:flex; gap:4px;">
+                    <button class="btn-icon staff-block-btn" data-id="${s.id}" style="color:${isBlocked ? 'var(--success)' : 'var(--danger)'}">
+                      <span class="material-icons-round" style="font-size:18px">${isBlocked ? 'lock_open' : 'lock'}</span>
+                    </button>
+                    <button class="btn-icon staff-edit-btn" data-id="${s.id}" ${isBlocked ? 'disabled style="opacity:0.3;"' : ''}>
+                      <span class="material-icons-round" style="font-size:18px">edit</span>
+                    </button>
+                    <button class="btn-icon staff-delete-btn" data-id="${s.id}" style="color:var(--danger)">
+                      <span class="material-icons-round" style="font-size:18px">delete</span>
+                    </button>
+                  </div>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:0.82rem;">
+                  <div>
+                    <div style="color:var(--text-dim); font-size:0.72rem; margin-bottom:2px;">PHONE</div>
+                    <div style="color:var(--text-secondary);">${s.phone || '—'}</div>
+                  </div>
+                  <div>
+                    <div style="color:var(--text-dim); font-size:0.72rem; margin-bottom:2px;">USERNAME</div>
+                    <code style="color:var(--text-primary); font-size:0.82rem;">${s.username || s.name.toLowerCase()}</code>
+                  </div>
+                  <div style="grid-column:1/-1;">
+                    <div style="color:var(--text-dim); font-size:0.72rem; margin-bottom:2px;">PASSWORD</div>
+                    <code style="color:var(--accent-gold); font-size:0.82rem;">${s.password || s.pin || '5678'}</code>
+                  </div>
+                </div>
+              </div>`;
+          }).join('')}
+        </div>
       `}
     </div>
 
     <!-- Admin PIN Section -->
     <div class="card" style="max-width:420px">
-      <div class="flex items-center gap-sm mb-md">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
         <span class="material-icons-round" style="color:var(--accent-gold); font-size:24px">admin_panel_settings</span>
-        <h3>Admin PIN</h3>
+        <h3 style="margin:0;">Admin PIN</h3>
       </div>
-      <p class="text-muted mb-md" style="font-size:0.85rem">Change the admin PIN used to log into the management panel.</p>
+      <p class="text-muted" style="font-size:0.85rem; margin-bottom:16px;">Change the admin PIN used to log into the management panel.</p>
       <div class="form-group">
         <label class="form-label">Current PIN</label>
         <code style="background:var(--bg-input); padding:6px 14px; border-radius:var(--radius-sm); font-size:1rem; letter-spacing:3px; border:1px solid var(--border); display:inline-block">${adminPin}</code>
       </div>
-      <div class="form-row">
-        <div class="form-group">
+      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+        <div class="form-group" style="flex:1; min-width:120px; margin:0;">
           <label class="form-label">New PIN</label>
-          <input type="text" class="form-input" id="new-admin-pin" placeholder="4 digit PIN"
+          <input type="text" class="form-input" id="new-admin-pin" placeholder="4 digits"
             maxlength="4" pattern="[0-9]{4}" inputmode="numeric" />
         </div>
-        <div class="form-group" style="display:flex; align-items:flex-end">
-          <button class="btn btn-primary w-full" id="change-admin-pin-btn">
-            <span class="material-icons-round">lock</span>
-            Change PIN
-          </button>
-        </div>
+        <button class="btn btn-primary" id="change-admin-pin-btn" style="height:42px; white-space:nowrap;">
+          <span class="material-icons-round">lock</span> Change PIN
+        </button>
       </div>
     </div>
   `;
 }
+
 
 function showStaffModal(staff = null) {
   const isEdit = !!staff;
