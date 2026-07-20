@@ -788,7 +788,12 @@ function submitOrder(paymentMode, paymentStatus, shop, items, total, notes, sess
     paymentStatus
   });
 
-  Toast.success('Order placed successfully!');
+  const isOffline = !navigator.onLine;
+  if (isOffline) {
+    Toast.info('⚡ Order saved offline! Will auto-sync when online.');
+  } else {
+    Toast.success('Order placed successfully!');
+  }
 
   // Clear cart immediately so that duplicate submissions cannot occur
   clearCart();
@@ -796,18 +801,19 @@ function submitOrder(paymentMode, paymentStatus, shop, items, total, notes, sess
 
   // Show success modal with navigation options
   Modal.show({
-    title: 'Order Placed!',
+    title: isOffline ? '⚡ Order Placed Offline!' : 'Order Placed!',
     content: `
       <div style="text-align:center; padding:12px 0;">
-        <div style="width:64px; height:64px; border-radius:50%; background:var(--success-light); display:flex; align-items:center; justify-content:center; margin:0 auto 16px;">
-          <span class="material-icons-round" style="font-size:32px; color:var(--success);">check_circle</span>
+        <div style="width:64px; height:64px; border-radius:50%; background:${isOffline ? 'rgba(245,158,11,0.2)' : 'var(--success-light)'}; display:flex; align-items:center; justify-content:center; margin:0 auto 16px;">
+          <span class="material-icons-round" style="font-size:32px; color:${isOffline ? '#f59e0b' : 'var(--success)'};">${isOffline ? 'cloud_off' : 'check_circle'}</span>
         </div>
-        <h3 style="margin-bottom:8px;">Order #${order.id}</h3>
+        <h3 style="margin-bottom:8px;">Order #${order.id.slice(-6).toUpperCase()}</h3>
         <p style="color:var(--text-secondary); margin-bottom:4px;">${shop ? shop.name : 'Unknown Shop'}</p>
         <p style="font-size:1.2rem; font-weight:700; color:var(--accent-gold); margin-bottom:4px;">₹${total.toLocaleString('en-IN')}</p>
         <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:20px; text-transform:uppercase;">
           Payment Method: ${paymentMode === 'credit' ? 'Credit' : paymentMode === 'upi' ? 'UPI' : 'Cash'}
         </p>
+        ${isOffline ? `<p style="font-size:0.8rem; color:#f59e0b; font-weight:600; margin-bottom:20px;">⚡ Saved locally — will auto-sync to database automatically when internet is available.</p>` : ''}
         <div style="display:flex; flex-direction:column; gap:10px;">
           <button class="btn btn-primary w-full" id="go-history-btn">
             <span class="material-icons-round">receipt_long</span>

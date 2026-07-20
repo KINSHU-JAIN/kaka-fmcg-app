@@ -1,7 +1,7 @@
 // ============================================
-// KAKA FMCG — Data Store (Supabase-only, real-time)
-// All data is read from and written to Supabase.
-// In-memory _data is a reactive cache only.
+// KAKA FMCG — Data Store (Supabase + Offline Auto-Sync Queue)
+// Works 100% Offline: Reads/Writes to local cache + queues actions
+// Auto-Syncs to Supabase when network is restored
 // ============================================
 
 import { supabase, isSupabaseConfigured } from './supabaseClient.js';
@@ -40,7 +40,7 @@ function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
-// ---------- In-memory cache (reactive, populated from Supabase) ----------
+// ---------- In-memory & Cache Storage ----------
 let _data = {
   adminPin: localStorage.getItem('kaka_admin_pin') || 'Kaka@123',
   firms: [], companies: [], products: [], shops: [],
@@ -48,13 +48,146 @@ let _data = {
   staffLocations: [], targets: [], beatPlans: [], returns: []
 };
 
+// Try loading initial cache state from localStorage if offline
+try {
+  const cacheRaw = localStorage.getItem('kaka_offline_cache');
+  if (cacheRaw) {
+    const parsed = JSON.parse(cacheRaw);
+    if (parsed && typeof parsed === 'object') {
+      _data = { ..._data, ...parsed };
+      console.log('[Store] Loaded cached data state into memory.');
+    }
+  }
+} catch (e) {}
+
+function saveCache() {
+  try {
+    localStorage.setItem('kaka_offline_cache', JSON.stringify(_data));
+  } catch (e) {}
+}
+
 function getData() { return _data; }
 
-// ---------- Supabase write helper (fire-and-forget with error logging) ----------
-function sbWrite(promise, label) {
-  promise.then(({ error }) => {
-    if (error) console.error(`[Supabase] ${label}:`, error);
-  }).catch(err => console.error(`[Supabase] ${label}:`, err));
+// ---------- Offline Queue Engine ----------
+function getOfflineQueue() {
+  try { return JSON.parse(localStorage.getItem('kaka_offline_queue') || '[]'); } catch { return []; }
+}
+
+function saveOfflineQueue(queue) {
+  try {
+    localStorage.setItem('kaka_offline_queue', JSON.stringify(queue));
+    emit('offlineQueue:change', queue);
+  } catch (e) {}
+}
+
+function queueOfflineAction(table, method, data, matchField = 'id', matchValue = null) {
+  const queue = getOfflineQueue();
+  const snakeData = data ? keysToSnake(data) : null;
+  const targetVal = matchValue || (snakeData ? snakeData[matchField] || snakeData.id : null);
+
+  // Avoid duplicate queueing if same record update/upsert is queued
+  const existingIdx = queue.findIndex(q => q.table === table && q.method === method && q.matchValue === targetVal);
+  const queueItem = {
+    id: uid(),
+    table,
+    method, // 'insert' | 'update' | 'upsert' | 'delete'
+    data: snakeData,
+    matchField,
+    matchValue: targetVal,
+    createdAt: new Date().toISOString()
+  };
+
+  if (existingIdx !== -1 && (method === 'update' || method === 'upsert')) {
+    queue[existingIdx] = queueItem;
+  } else {
+    queue.push(queueItem);
+  }
+
+  saveOfflineQueue(queue);
+  console.log(`[OfflineQueue] Queued ${method} on ${table} (Total queued: ${queue.length})`);
+}
+
+// ---------- Supabase Writer (Online direct or Offline auto-queue) ----------
+function sbWrite(table, method, data, matchField = 'id', matchValue = null, label = '') {
+  saveCache();
+  if (!isSupabaseConfigured) return;
+
+  if (!navigator.onLine) {
+    queueOfflineAction(table, method, data, matchField, matchValue);
+    return;
+  }
+
+  const snakeData = data ? keysToSnake(data) : null;
+  const targetVal = matchValue || (snakeData ? snakeData[matchField] || snakeData.id : null);
+
+  let promise;
+  if (method === 'insert')      promise = supabase.from(table).insert(snakeData);
+  else if (method === 'update') promise = supabase.from(table).update(snakeData).eq(matchField, targetVal);
+  else if (method === 'upsert') promise = supabase.from(table).upsert(snakeData);
+  else if (method === 'delete') promise = supabase.from(table).delete().eq(matchField, targetVal);
+
+  if (promise) {
+    promise.then(({ error }) => {
+      if (error) {
+        console.error(`[Supabase Error] ${label || table}:`, error);
+        queueOfflineAction(table, method, data, matchField, targetVal);
+      }
+    }).catch(err => {
+      console.warn(`[Network Error] ${label || table}:`, err);
+      queueOfflineAction(table, method, data, matchField, targetVal);
+    });
+  }
+}
+
+// ---------- Auto-Sync Queue Processor ----------
+let isSyncingQueue = false;
+
+async function processOfflineQueue() {
+  if (isSyncingQueue || !navigator.onLine || !isSupabaseConfigured) return;
+  const queue = getOfflineQueue();
+  if (queue.length === 0) return;
+
+  isSyncingQueue = true;
+  console.log(`[AutoSync] Processing ${queue.length} offline queued items...`);
+  emit('sync:status', { syncing: true, count: queue.length });
+
+  const remainingQueue = [];
+  let syncedCount = 0;
+
+  for (const item of queue) {
+    try {
+      let res;
+      if (item.method === 'insert')      res = await supabase.from(item.table).insert(item.data);
+      else if (item.method === 'update') res = await supabase.from(item.table).update(item.data).eq(item.matchField, item.matchValue);
+      else if (item.method === 'upsert') res = await supabase.from(item.table).upsert(item.data);
+      else if (item.method === 'delete') res = await supabase.from(item.table).delete().eq(item.matchField, item.matchValue);
+
+      if (res && res.error) {
+        console.error(`[AutoSync Item Error] ${item.table}:`, res.error);
+        remainingQueue.push(item);
+      } else {
+        syncedCount++;
+      }
+    } catch (err) {
+      console.warn(`[AutoSync Network Loss] ${item.table}:`, err);
+      remainingQueue.push(item);
+      break; // Stop loop if connection drops mid-way
+    }
+  }
+
+  saveOfflineQueue(remainingQueue);
+  isSyncingQueue = false;
+  emit('sync:status', { syncing: false, count: remainingQueue.length, syncedCount });
+}
+
+// Listen for network reconnect
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    console.log('[Network] Internet connection restored. Processing offline queue...');
+    processOfflineQueue();
+  });
+  // Background interval check every 15 seconds
+  setInterval(processOfflineQueue, 15000);
 }
 
 // ---------- Ledger Helpers ----------
@@ -81,9 +214,7 @@ function addLedgerEntry(shopId, amount, type, refId = null, description = '', da
   };
   _data.ledgers.push(entry);
   emit('ledgers:change', _data.ledgers);
-  if (isSupabaseConfigured) {
-    sbWrite(supabase.from('ledgers').insert(keysToSnake(entry)), 'addLedgerEntry');
-  }
+  sbWrite('ledgers', 'insert', entry, 'id', entry.id, 'addLedgerEntry');
   return entry;
 }
 
@@ -97,7 +228,7 @@ function addLedgerPayment(shopId, amount, paymentMode, staffId = null) {
     (_data.orders || []).forEach(o => {
       if (o.shopId === shopId && o.paymentStatus === 'unpaid' && o.status !== 'cancelled') {
         o.paymentStatus = 'paid';
-        if (isSupabaseConfigured) sbWrite(supabase.from('orders').update({ payment_status: 'paid' }).eq('id', o.id), 'ledgerPayment:orderUpdate');
+        sbWrite('orders', 'update', { paymentStatus: 'paid' }, 'id', o.id, 'ledgerPayment:orderUpdate');
       }
     });
     emit('orders:change', _data.orders);
@@ -112,7 +243,7 @@ function saveStaffLocation(staffId, lat, lng) {
   if (idx !== -1) _data.staffLocations[idx] = location;
   else _data.staffLocations.push(location);
   emit('staffLocations:change', _data.staffLocations);
-  if (isSupabaseConfigured) sbWrite(supabase.from('staff_locations').upsert(keysToSnake(location)), 'saveStaffLocation');
+  sbWrite('staff_locations', 'upsert', location, 'staff_id', staffId, 'saveStaffLocation');
   return location;
 }
 function getStaffLocations() { return _data.staffLocations || []; }
@@ -135,13 +266,20 @@ async function safeSelect(tableName) {
 // ---------- Supabase Init (primary data load) ----------
 async function initSupabase(_seedDataIgnored) {
   if (!isSupabaseConfigured) {
-    console.warn('[Store] Supabase not configured — app starting with empty data.');
+    console.warn('[Store] Supabase not configured — app starting with local cache.');
+    emit('data:ready', _data);
+    return;
+  }
+
+  // If offline, ready up using cache
+  if (!navigator.onLine) {
+    console.log('[Store] App starting in Offline Mode with local cache.');
     emit('data:ready', _data);
     return;
   }
 
   try {
-    console.log('[Store] Loading all data from Supabase...');
+    console.log('[Store] Fetching latest data from Supabase...');
     const [
       resFirms, resCompanies, resProducts, resShops, resStaff,
       resOrders, resRoutes, resLedgers, resLocations,
@@ -177,7 +315,8 @@ async function initSupabase(_seedDataIgnored) {
       returns:        (resReturns.data   || []).map(keysToCamel),
     };
 
-    console.log(`[Store] Loaded successfully: ${_data.shops.length} shops, ${_data.staff.length} staff, ${_data.orders.length} orders`);
+    saveCache();
+    console.log(`[Store] Loaded: ${_data.shops.length} shops, ${_data.staff.length} staff, ${_data.orders.length} orders`);
 
     // Setup Supabase Realtime
     try {
@@ -188,10 +327,12 @@ async function initSupabase(_seedDataIgnored) {
       console.warn('[Store] Realtime subscription failed:', e);
     }
 
+    // Process any unsynced offline queue items
+    processOfflineQueue();
+
     emit('data:ready', _data);
   } catch (err) {
     console.error('[Store] Supabase load failed:', err);
-    // Even on error, emit data:ready so app opens gracefully
     emit('data:ready', _data);
   }
 }
@@ -216,6 +357,7 @@ function handleRealtimeChange(payload) {
     _data[key] = _data[key].filter(item => item[keyField] !== camelOld[keyField]);
   }
 
+  saveCache();
   emit(`${key}:change`, _data[key]);
   emit('data:change', _data);
 }
@@ -236,7 +378,7 @@ function addCompany(company) {
   const rec = { id: uid(), isActive: true, ...company };
   _data.companies.push(rec);
   emit('companies:change', _data.companies);
-  if (isSupabaseConfigured) sbWrite(supabase.from('companies').insert(keysToSnake(rec)), 'addCompany');
+  sbWrite('companies', 'insert', rec, 'id', rec.id, 'addCompany');
   return rec;
 }
 function updateCompany(id, updates) {
@@ -244,7 +386,7 @@ function updateCompany(id, updates) {
   if (idx === -1) return null;
   _data.companies[idx] = { ..._data.companies[idx], ...updates };
   emit('companies:change', _data.companies);
-  if (isSupabaseConfigured) sbWrite(supabase.from('companies').update(keysToSnake(updates)).eq('id', id), 'updateCompany');
+  sbWrite('companies', 'update', updates, 'id', id, 'updateCompany');
   return _data.companies[idx];
 }
 function deleteCompany(id) {
@@ -252,10 +394,8 @@ function deleteCompany(id) {
   _data.products  = _data.products.filter(p => p.companyId !== id);
   emit('companies:change', _data.companies);
   emit('products:change', _data.products);
-  if (isSupabaseConfigured) {
-    sbWrite(supabase.from('companies').delete().eq('id', id), 'deleteCompany');
-    sbWrite(supabase.from('products').delete().eq('company_id', id), 'deleteCompany:products');
-  }
+  sbWrite('companies', 'delete', null, 'id', id, 'deleteCompany');
+  sbWrite('products', 'delete', null, 'company_id', id, 'deleteCompany:products');
   return true;
 }
 
@@ -280,7 +420,7 @@ function addProduct(product) {
   const rec = { id: uid(), isActive: true, ...product };
   _data.products.push(rec);
   emit('products:change', _data.products);
-  if (isSupabaseConfigured) sbWrite(supabase.from('products').insert(keysToSnake(rec)), 'addProduct');
+  sbWrite('products', 'insert', rec, 'id', rec.id, 'addProduct');
   return rec;
 }
 function updateProduct(id, updates) {
@@ -288,13 +428,13 @@ function updateProduct(id, updates) {
   if (idx === -1) return null;
   _data.products[idx] = { ..._data.products[idx], ...updates };
   emit('products:change', _data.products);
-  if (isSupabaseConfigured) sbWrite(supabase.from('products').update(keysToSnake(updates)).eq('id', id), 'updateProduct');
+  sbWrite('products', 'update', updates, 'id', id, 'updateProduct');
   return _data.products[idx];
 }
 function deleteProduct(id) {
   _data.products = _data.products.filter(p => p.id !== id);
   emit('products:change', _data.products);
-  if (isSupabaseConfigured) sbWrite(supabase.from('products').delete().eq('id', id), 'deleteProduct');
+  sbWrite('products', 'delete', null, 'id', id, 'deleteProduct');
   return true;
 }
 
@@ -313,7 +453,7 @@ function addShop(shop) {
   const rec = { id: uid(), ...shop };
   _data.shops.push(rec);
   emit('shops:change', _data.shops);
-  if (isSupabaseConfigured) sbWrite(supabase.from('shops').insert(keysToSnake(rec)), 'addShop');
+  sbWrite('shops', 'insert', rec, 'id', rec.id, 'addShop');
   return rec;
 }
 function updateShop(id, updates) {
@@ -321,7 +461,7 @@ function updateShop(id, updates) {
   if (idx === -1) return null;
   _data.shops[idx] = { ..._data.shops[idx], ...updates };
   emit('shops:change', _data.shops);
-  if (isSupabaseConfigured) sbWrite(supabase.from('shops').update(keysToSnake(updates)).eq('id', id), 'updateShop');
+  sbWrite('shops', 'update', updates, 'id', id, 'updateShop');
   return _data.shops[idx];
 }
 function deleteShop(id) {
@@ -329,10 +469,8 @@ function deleteShop(id) {
   _data.routes.forEach(r => { r.shopIds = (r.shopIds || []).filter(sid => sid !== id); });
   emit('shops:change', _data.shops);
   emit('routes:change', _data.routes);
-  if (isSupabaseConfigured) {
-    sbWrite(supabase.from('shops').delete().eq('id', id), 'deleteShop');
-    _data.routes.forEach(r => sbWrite(supabase.from('routes').update({ shop_ids: r.shopIds }).eq('id', r.id), 'deleteShop:routeUpdate'));
-  }
+  sbWrite('shops', 'delete', null, 'id', id, 'deleteShop');
+  _data.routes.forEach(r => sbWrite('routes', 'update', { shopIds: r.shopIds }, 'id', r.id, 'deleteShop:routeUpdate'));
   return true;
 }
 function getShopOutstanding(shopId) {
@@ -365,7 +503,7 @@ function settleShopOutstanding(shopId) {
   (_data.orders || []).forEach(o => {
     if (o.shopId === shopId && o.paymentStatus === 'unpaid' && o.status !== 'cancelled') {
       o.paymentStatus = 'paid';
-      if (isSupabaseConfigured) sbWrite(supabase.from('orders').update({ payment_status: 'paid' }).eq('id', o.id), 'settleShop');
+      sbWrite('orders', 'update', { paymentStatus: 'paid' }, 'id', o.id, 'settleShop');
     }
   });
   emit('orders:change', _data.orders);
@@ -387,7 +525,7 @@ function addOrder(order) {
   const rec = { id: uid(), status: 'pending', createdAt: new Date().toISOString(), penaltyAdded: 0, ...order };
   _data.orders.push(rec);
   emit('orders:change', _data.orders);
-  if (isSupabaseConfigured) sbWrite(supabase.from('orders').insert(keysToSnake(rec)), 'addOrder');
+  sbWrite('orders', 'insert', rec, 'id', rec.id, 'addOrder');
   return rec;
 }
 function updateOrderStatus(id, status) {
@@ -412,7 +550,7 @@ function updateOrderStatus(id, status) {
     }
   }
   emit('orders:change', _data.orders);
-  if (isSupabaseConfigured) sbWrite(supabase.from('orders').update(keysToSnake(updates)).eq('id', id), 'updateOrderStatus');
+  sbWrite('orders', 'update', updates, 'id', id, 'updateOrderStatus');
   return _data.orders[idx];
 }
 function updateOrder(id, updates) {
@@ -426,17 +564,15 @@ function updateOrder(id, updates) {
   if (updates.paymentStatus === 'paid' && oldOrder.paymentStatus !== 'paid') addLedgerEntry(newOrder.shopId, newOrder.total, 'credit', id, `Payment received for Order #${id.slice(-6).toUpperCase()}`);
   if (updates.status === 'cancelled'  && oldOrder.status !== 'cancelled'  && (oldOrder.status === 'confirmed' || oldOrder.status === 'delivered')) addLedgerEntry(newOrder.shopId, newOrder.total, 'credit', id, `Order #${id.slice(-6).toUpperCase()} cancelled (reverted)`);
   emit('orders:change', _data.orders);
-  if (isSupabaseConfigured) {
-    const dbUp = { ...updates };
-    delete dbUp.deliveredAt; delete dbUp.confirmedAt;
-    sbWrite(supabase.from('orders').update(keysToSnake(dbUp)).eq('id', id), 'updateOrder');
-  }
+  const dbUp = { ...updates };
+  delete dbUp.deliveredAt; delete dbUp.confirmedAt;
+  sbWrite('orders', 'update', dbUp, 'id', id, 'updateOrder');
   return _data.orders[idx];
 }
 function deleteOrder(id) {
   _data.orders = _data.orders.filter(o => o.id !== id);
   emit('orders:change', _data.orders);
-  if (isSupabaseConfigured) sbWrite(supabase.from('orders').delete().eq('id', id), 'deleteOrder');
+  sbWrite('orders', 'delete', null, 'id', id, 'deleteOrder');
   return true;
 }
 
@@ -451,7 +587,7 @@ function addRoute(route) {
   const rec = { id: uid(), shopIds: [], ...route };
   _data.routes.push(rec);
   emit('routes:change', _data.routes);
-  if (isSupabaseConfigured) sbWrite(supabase.from('routes').insert(keysToSnake(rec)), 'addRoute');
+  sbWrite('routes', 'insert', rec, 'id', rec.id, 'addRoute');
   return rec;
 }
 function updateRoute(id, updates) {
@@ -459,7 +595,7 @@ function updateRoute(id, updates) {
   if (idx === -1) return null;
   _data.routes[idx] = { ..._data.routes[idx], ...updates };
   emit('routes:change', _data.routes);
-  if (isSupabaseConfigured) sbWrite(supabase.from('routes').update(keysToSnake(updates)).eq('id', id), 'updateRoute');
+  sbWrite('routes', 'update', updates, 'id', id, 'updateRoute');
   return _data.routes[idx];
 }
 function deleteRoute(id) {
@@ -467,10 +603,8 @@ function deleteRoute(id) {
   _data.routes = _data.routes.filter(r => r.id !== id);
   emit('routes:change', _data.routes);
   emit('shops:change', _data.shops);
-  if (isSupabaseConfigured) {
-    sbWrite(supabase.from('routes').delete().eq('id', id), 'deleteRoute');
-    _data.shops.forEach(s => sbWrite(supabase.from('shops').update({ route_id: s.routeId }).eq('id', s.id), 'deleteRoute:shopUpdate'));
-  }
+  sbWrite('routes', 'delete', null, 'id', id, 'deleteRoute');
+  _data.shops.forEach(s => sbWrite('shops', 'update', { routeId: s.routeId }, 'id', s.id, 'deleteRoute:shopUpdate'));
   return true;
 }
 
@@ -481,7 +615,7 @@ function addStaff(staff) {
   const rec = { id: uid(), ...staff };
   _data.staff.push(rec);
   emit('staff:change', _data.staff);
-  if (isSupabaseConfigured) sbWrite(supabase.from('staff').insert(keysToSnake(rec)), 'addStaff');
+  sbWrite('staff', 'insert', rec, 'id', rec.id, 'addStaff');
   return rec;
 }
 function updateStaff(id, updates) {
@@ -489,13 +623,13 @@ function updateStaff(id, updates) {
   if (idx === -1) return null;
   _data.staff[idx] = { ..._data.staff[idx], ...updates };
   emit('staff:change', _data.staff);
-  if (isSupabaseConfigured) sbWrite(supabase.from('staff').update(keysToSnake(updates)).eq('id', id), 'updateStaff');
+  sbWrite('staff', 'update', updates, 'id', id, 'updateStaff');
   return _data.staff[idx];
 }
 function deleteStaff(id) {
   _data.staff = _data.staff.filter(s => s.id !== id);
   emit('staff:change', _data.staff);
-  if (isSupabaseConfigured) sbWrite(supabase.from('staff').delete().eq('id', id), 'deleteStaff');
+  sbWrite('staff', 'delete', null, 'id', id, 'deleteStaff');
   return true;
 }
 
@@ -503,7 +637,7 @@ function deleteStaff(id) {
 function getAdminPin() { return _data.adminPin || 'Kaka@123'; }
 function setAdminPin(pin) {
   _data.adminPin = pin;
-  localStorage.setItem('kaka_admin_pin', pin); // PIN is tiny and doesn't need a DB table
+  localStorage.setItem('kaka_admin_pin', pin);
 }
 
 function authenticate(username, password) {
@@ -527,11 +661,10 @@ async function authenticateAsync(username, password) {
   const u = (username || '').trim().toLowerCase();
   const p = (password || '').trim();
   if (u === 'kaka' && p === 'Kaka@123') return { role: 'admin', requires2fa: true, user: { name: 'Kaka', id: 'admin' } };
-  // Try local cache first (fast path)
   const localResult = authenticate(username, password);
   if (localResult) return localResult;
-  // Direct Supabase lookup (works on any device before cache is warm)
-  if (isSupabaseConfigured) {
+
+  if (isSupabaseConfigured && navigator.onLine) {
     try {
       const { data: staffRows, error } = await supabase.from('staff').select('*').or(`username.eq.${u},name.ilike.${u}`);
       if (!error && staffRows && staffRows.length > 0) {
@@ -614,13 +747,13 @@ function setTarget(staffId, firmId, month, targetAmount) {
   if (existing) {
     existing.targetAmount = targetAmount;
     emit('targets:change', _data.targets);
-    if (isSupabaseConfigured) sbWrite(supabase.from('targets').update({ target_amount: targetAmount }).eq('id', existing.id), 'setTarget:update');
+    sbWrite('targets', 'update', { targetAmount }, 'id', existing.id, 'setTarget:update');
   } else {
     const rec = { id: uid(), staffId, firmId, month, targetAmount };
     if (!_data.targets) _data.targets = [];
     _data.targets.push(rec);
     emit('targets:change', _data.targets);
-    if (isSupabaseConfigured) sbWrite(supabase.from('targets').insert(keysToSnake(rec)), 'setTarget:insert');
+    sbWrite('targets', 'insert', rec, 'id', rec.id, 'setTarget:insert');
   }
 }
 
@@ -635,13 +768,13 @@ function setBeatPlan(staffId, firmId, dayOfWeek, shopIds) {
   if (existing) {
     existing.shopIds = shopIds;
     emit('beatPlans:change', _data.beatPlans);
-    if (isSupabaseConfigured) sbWrite(supabase.from('beat_plans').update({ shop_ids: shopIds }).eq('id', existing.id), 'setBeatPlan:update');
+    sbWrite('beat_plans', 'update', { shopIds }, 'id', existing.id, 'setBeatPlan:update');
   } else {
     const rec = { id: uid(), staffId, firmId, dayOfWeek, shopIds };
     if (!_data.beatPlans) _data.beatPlans = [];
     _data.beatPlans.push(rec);
     emit('beatPlans:change', _data.beatPlans);
-    if (isSupabaseConfigured) sbWrite(supabase.from('beat_plans').insert(keysToSnake(rec)), 'setBeatPlan:insert');
+    sbWrite('beat_plans', 'insert', rec, 'id', rec.id, 'setBeatPlan:insert');
   }
 }
 
@@ -656,7 +789,7 @@ function addReturn(ret) {
   if (!_data.returns) _data.returns = [];
   _data.returns.push(ret);
   emit('returns:change', _data.returns);
-  if (isSupabaseConfigured) sbWrite(supabase.from('returns').insert(keysToSnake(ret)), 'addReturn');
+  sbWrite('returns', 'insert', ret, 'id', ret.id, 'addReturn');
   return ret;
 }
 function updateReturnStatus(id, status) {
@@ -665,7 +798,7 @@ function updateReturnStatus(id, status) {
   _data.returns[idx].status = status;
   _data.returns[idx].resolvedAt = new Date().toISOString();
   emit('returns:change', _data.returns);
-  if (isSupabaseConfigured) sbWrite(supabase.from('returns').update({ status, resolved_at: _data.returns[idx].resolvedAt }).eq('id', id), 'updateReturnStatus');
+  sbWrite('returns', 'update', { status, resolvedAt: _data.returns[idx].resolvedAt }, 'id', id, 'updateReturnStatus');
   return _data.returns[idx];
 }
 
@@ -704,6 +837,7 @@ function getShopPurchaseHistory(shopId) {
 // ---------- Export ----------
 export const Store = {
   on, emit, getData, initSupabase,
+  getOfflineQueue, processOfflineQueue,
   // Firms
   getFirms, getFirmById,
   // Companies

@@ -192,8 +192,70 @@ async function navigate() {
   }
 }
 
+function initOfflineBanner() {
+  const banner = document.createElement('div');
+  banner.id = 'offline-sync-banner';
+  banner.style.cssText = `
+    position: fixed; bottom: 24px; right: 24px; z-index: 9990;
+    display: none; align-items: center; gap: 8px;
+    padding: 10px 18px; border-radius: 100px;
+    font-size: 0.83rem; font-weight: 700;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(8px);
+    font-family: 'Inter', sans-serif;
+  `;
+  document.body.appendChild(banner);
+
+  function updateStatus() {
+    const isOnline = navigator.onLine;
+    const queue = Store.getOfflineQueue();
+
+    if (!isOnline) {
+      banner.style.display = 'flex';
+      banner.style.background = 'linear-gradient(135deg, #f59e0b, #d97706)';
+      banner.style.color = '#0a0f1e';
+      banner.innerHTML = `
+        <span class="material-icons-round" style="font-size:18px;">cloud_off</span>
+        <span>Offline Mode ${queue.length > 0 ? `(${queue.length} pending auto-sync)` : ''}</span>
+      `;
+    } else if (queue.length > 0) {
+      banner.style.display = 'flex';
+      banner.style.background = 'linear-gradient(135deg, #3b82f6, #1d4ed8)';
+      banner.style.color = '#ffffff';
+      banner.innerHTML = `
+        <span class="material-icons-round" style="font-size:18px; animation:bootSpin 1s linear infinite;">sync</span>
+        <span>Auto-syncing ${queue.length} item${queue.length > 1 ? 's' : ''} to database...</span>
+      `;
+    } else {
+      banner.style.display = 'none';
+    }
+  }
+
+  window.addEventListener('online', updateStatus);
+  window.addEventListener('offline', updateStatus);
+  Store.on('offlineQueue:change', updateStatus);
+  Store.on('sync:status', ({ syncing, count, successCount }) => {
+    updateStatus();
+    if (!syncing && successCount > 0) {
+      banner.style.display = 'flex';
+      banner.style.background = 'linear-gradient(135deg, #22c55e, #15803d)';
+      banner.style.color = '#ffffff';
+      banner.innerHTML = `
+        <span class="material-icons-round" style="font-size:18px;">cloud_done</span>
+        <span>Synced ${successCount} offline item${successCount > 1 ? 's' : ''} to server!</span>
+      `;
+      setTimeout(() => { updateStatus(); }, 4000);
+    }
+  });
+
+  updateStatus();
+}
+
 // Boot application
 async function boot() {
+  initOfflineBanner();
+
   // Show full-screen loading overlay while Supabase connects
   const appRoot = document.getElementById('app') || document.body;
   const loader = document.createElement('div');
