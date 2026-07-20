@@ -118,75 +118,81 @@ function saveStaffLocation(staffId, lat, lng) {
 function getStaffLocations() { return _data.staffLocations || []; }
 function getStaffLocation(staffId) { return (_data.staffLocations || []).find(l => l.staffId === staffId) || null; }
 
+async function safeSelect(tableName) {
+  try {
+    const res = await supabase.from(tableName).select('*');
+    if (res && res.error) {
+      console.warn(`[Store] Table ${tableName} warning:`, res.error.message);
+      return { data: [], error: res.error };
+    }
+    return res || { data: [], error: null };
+  } catch (err) {
+    console.warn(`[Store] Table ${tableName} query error:`, err);
+    return { data: [], error: null };
+  }
+}
+
 // ---------- Supabase Init (primary data load) ----------
 async function initSupabase(_seedDataIgnored) {
   if (!isSupabaseConfigured) {
-    console.error('[Store] Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables in Vercel.');
-    emit('data:error', new Error('Supabase not configured'));
+    console.warn('[Store] Supabase not configured — app starting with empty data.');
+    emit('data:ready', _data);
     return;
   }
 
   try {
     console.log('[Store] Loading all data from Supabase...');
     const [
-      { data: firms,          error: eFirms },
-      { data: companies,      error: eCompanies },
-      { data: products,       error: eProducts },
-      { data: shops,          error: eShops },
-      { data: staff,          error: eStaff },
-      { data: orders,         error: eOrders },
-      { data: routes,         error: eRoutes },
-      { data: ledgers,        error: eLedgers },
-      { data: staffLocations, error: eStaffLocations },
-      { data: targets },
-      { data: beatPlans },
-      { data: returns }
+      resFirms, resCompanies, resProducts, resShops, resStaff,
+      resOrders, resRoutes, resLedgers, resLocations,
+      resTargets, resBeatPlans, resReturns
     ] = await Promise.all([
-      supabase.from('firms').select('*'),
-      supabase.from('companies').select('*'),
-      supabase.from('products').select('*'),
-      supabase.from('shops').select('*'),
-      supabase.from('staff').select('*'),
-      supabase.from('orders').select('*'),
-      supabase.from('routes').select('*'),
-      supabase.from('ledgers').select('*'),
-      supabase.from('staff_locations').select('*'),
-      supabase.from('targets').select('*').catch(() => ({ data: [], error: null })),
-      supabase.from('beat_plans').select('*').catch(() => ({ data: [], error: null })),
-      supabase.from('returns').select('*').catch(() => ({ data: [], error: null }))
+      safeSelect('firms'),
+      safeSelect('companies'),
+      safeSelect('products'),
+      safeSelect('shops'),
+      safeSelect('staff'),
+      safeSelect('orders'),
+      safeSelect('routes'),
+      safeSelect('ledgers'),
+      safeSelect('staff_locations'),
+      safeSelect('targets'),
+      safeSelect('beat_plans'),
+      safeSelect('returns')
     ]);
-
-    if (eFirms || eCompanies || eProducts || eShops || eStaff || eOrders || eRoutes || eLedgers || eStaffLocations) {
-      throw new Error('Failed to load one or more tables from Supabase');
-    }
 
     _data = {
       adminPin: localStorage.getItem('kaka_admin_pin') || 'Kaka@123',
-      firms:          (firms          || []).map(keysToCamel),
-      companies:      (companies      || []).map(keysToCamel),
-      products:       (products       || []).map(keysToCamel),
-      shops:          (shops          || []).map(keysToCamel),
-      staff:          (staff          || []).map(keysToCamel),
-      orders:         (orders         || []).map(keysToCamel),
-      routes:         (routes         || []).map(keysToCamel),
-      ledgers:        (ledgers        || []).map(keysToCamel),
-      staffLocations: (staffLocations || []).map(keysToCamel),
-      targets:        (targets        || []).map(keysToCamel),
-      beatPlans:      (beatPlans      || []).map(keysToCamel),
-      returns:        (returns        || []).map(keysToCamel),
+      firms:          (resFirms.data     || []).map(keysToCamel),
+      companies:      (resCompanies.data || []).map(keysToCamel),
+      products:       (resProducts.data  || []).map(keysToCamel),
+      shops:          (resShops.data     || []).map(keysToCamel),
+      staff:          (resStaff.data     || []).map(keysToCamel),
+      orders:         (resOrders.data    || []).map(keysToCamel),
+      routes:         (resRoutes.data    || []).map(keysToCamel),
+      ledgers:        (resLedgers.data   || []).map(keysToCamel),
+      staffLocations: (resLocations.data || []).map(keysToCamel),
+      targets:        (resTargets.data   || []).map(keysToCamel),
+      beatPlans:      (resBeatPlans.data || []).map(keysToCamel),
+      returns:        (resReturns.data   || []).map(keysToCamel),
     };
 
-    console.log(`[Store] Loaded: ${_data.shops.length} shops, ${_data.staff.length} staff, ${_data.orders.length} orders`);
+    console.log(`[Store] Loaded successfully: ${_data.shops.length} shops, ${_data.staff.length} staff, ${_data.orders.length} orders`);
 
     // Setup Supabase Realtime
-    supabase.channel('kaka-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public' }, handleRealtimeChange)
-      .subscribe(status => console.log('[Realtime]', status));
+    try {
+      supabase.channel('kaka-realtime')
+        .on('postgres_changes', { event: '*', schema: 'public' }, handleRealtimeChange)
+        .subscribe(status => console.log('[Realtime]', status));
+    } catch (e) {
+      console.warn('[Store] Realtime subscription failed:', e);
+    }
 
     emit('data:ready', _data);
   } catch (err) {
     console.error('[Store] Supabase load failed:', err);
-    emit('data:error', err);
+    // Even on error, emit data:ready so app opens gracefully
+    emit('data:ready', _data);
   }
 }
 

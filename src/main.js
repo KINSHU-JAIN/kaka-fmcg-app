@@ -195,13 +195,14 @@ async function navigate() {
 // Boot application
 async function boot() {
   // Show full-screen loading overlay while Supabase connects
+  const appRoot = document.getElementById('app') || document.body;
   const loader = document.createElement('div');
   loader.id = 'boot-loader';
   loader.innerHTML = `
     <style>
       #boot-loader {
         position: fixed; inset: 0; z-index: 9999;
-        background: #0a0f1e;
+        background: var(--bg-base, #0a0f1e);
         display: flex; flex-direction: column;
         align-items: center; justify-content: center; gap: 20px;
       }
@@ -229,34 +230,27 @@ async function boot() {
   `;
   document.body.appendChild(loader);
 
-  function startApp() {
+  // Listen for data ready / error
+  Store.on('data:ready', () => {
     loader.remove();
+    // Update firm from DB if available
     const firms = Store.getFirms();
     if (firms.length > 0) window.__currentFirm = firms[0].id;
     window.addEventListener('hashchange', navigate);
     navigate();
-  }
+  });
 
-  function showError(msg) {
+  Store.on('data:error', (err) => {
     loader.innerHTML = `
-      <style>#boot-loader p{color:rgba(255,255,255,0.6);font-family:'Inter',sans-serif;text-align:center;max-width:320px;line-height:1.6;margin:0;}</style>
+      <style>#boot-loader p{color:rgba(255,255,255,0.6);font-family:'Inter',sans-serif;text-align:center;max-width:300px;line-height:1.5;}</style>
       <span class="material-icons-round" style="font-size:48px;color:#ef4444;">cloud_off</span>
-      <p style="font-size:1rem;font-weight:700;color:#fff;">Could not connect to server</p>
-      <p>${msg}</p>
+      <p style="font-size:1rem;font-weight:600;color:#fff;">Could not connect to server</p>
+      <p>Please check your internet connection and refresh the page.</p>
       <button onclick="location.reload()" style="margin-top:8px;padding:10px 24px;background:#f59e0b;color:#0a0f1e;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:0.9rem;">Retry</button>
     `;
-  }
+  });
 
-  // IMPORTANT: Register listeners BEFORE calling initSupabase so we never miss the event
-  Store.on('data:ready', startApp);
-  Store.on('data:error', (err) => showError('Please check your internet connection and try again.'));
-
-  try {
-    await Store.initSupabase();
-  } catch (err) {
-    console.error('Boot error:', err);
-    showError('Unexpected error during startup.');
-  }
+  await Store.initSupabase();
 }
 
 boot();
