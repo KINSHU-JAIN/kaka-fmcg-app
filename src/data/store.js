@@ -121,8 +121,8 @@ function getStaffLocation(staffId) { return (_data.staffLocations || []).find(l 
 // ---------- Supabase Init (primary data load) ----------
 async function initSupabase(_seedDataIgnored) {
   if (!isSupabaseConfigured) {
-    console.warn('[Store] Supabase not configured — app will start with empty data.');
-    emit('data:ready', _data);
+    console.error('[Store] Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables in Vercel.');
+    emit('data:error', new Error('Supabase not configured'));
     return;
   }
 
