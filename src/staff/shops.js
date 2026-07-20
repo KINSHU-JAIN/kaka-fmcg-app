@@ -55,9 +55,6 @@ function shopCard(shop) {
         <button class="btn btn-secondary btn-sm shop-edit-btn" data-shop-id="${shop.id}">
           <span class="material-icons-round" style="font-size:16px;">edit</span>
         </button>
-        <button class="btn btn-danger btn-sm shop-delete-btn" data-shop-id="${shop.id}">
-          <span class="material-icons-round" style="font-size:16px;">delete</span>
-        </button>
       </div>
     </div>`;
 }
@@ -235,27 +232,6 @@ function bindShopButtons() {
     });
   });
 
-  // Delete
-  document.querySelectorAll('.shop-delete-btn').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const shopId = btn.dataset.shopId;
-      const shop = Store.getShopById(shopId);
-      if (!shop) return;
-
-      const confirmed = await Modal.confirm(`Delete "${shop.name}"? This action cannot be undone.`);
-      if (confirmed) {
-        Store.deleteShop(shopId);
-        Toast.success(`"${shop.name}" deleted`);
-        // Re-render the page
-        const appRoot = document.getElementById('main-content') || document.querySelector('.main-content');
-        if (appRoot) {
-          appRoot.innerHTML = render();
-          init();
-        }
-      }
-    });
-  });
 }
 
 function openAddModal() {

@@ -12,6 +12,7 @@ const adminMenuItems = [
   { section: 'Management', items: [
     { id: 'companies', label: 'Companies', icon: 'business', hash: '#/admin/companies' },
     { id: 'products', label: 'Products', icon: 'inventory_2', hash: '#/admin/products' },
+    { id: 'shops', label: 'Shops', icon: 'store', hash: '#/admin/shops' },
     { id: 'orders', label: 'Orders', icon: 'receipt_long', hash: '#/admin/orders' },
     { id: 'ledger', label: 'Retailer Ledger', icon: 'menu_book', hash: '#/admin/ledger' },
   ]},
