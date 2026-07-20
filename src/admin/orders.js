@@ -10,14 +10,8 @@ import { printInvoice, getWhatsAppShareUrl } from '../components/invoice.js';
 let currentTab = 'all';
 let selectedDate = '';
 
-function getLocalReturns() {
-  try { return JSON.parse(localStorage.getItem('kaka_returns') || '[]'); } catch { return []; }
-}
-function updateLocalReturn(id, updates) {
-  const returns = getLocalReturns();
-  const idx = returns.findIndex(r => r.id === id);
-  if (idx !== -1) returns[idx] = { ...returns[idx], ...updates };
-  localStorage.setItem('kaka_returns', JSON.stringify(returns));
+function getReturnsData(firmId) {
+  return Store.getReturns({ firmId });
 }
 
 function getFirmId() {
@@ -244,7 +238,7 @@ export function render() {
   const counts = { all: allOrders.length, pending: 0, confirmed: 0, delivered: 0, cancelled: 0 };
   allOrders.forEach(o => { if (counts[o.status] !== undefined) counts[o.status]++; });
 
-  const returnsData = getLocalReturns().filter(r => r.firmId === firmId);
+  const returnsData = getReturnsData(firmId);
   const pendingReturnsCount = returnsData.filter(r => r.status === 'pending').length;
 
   const tabs = [
@@ -514,10 +508,9 @@ export function init() {
   document.querySelectorAll('.return-approve-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const returnId = btn.dataset.returnId;
-      try { Store.updateReturnStatus(returnId, 'approved'); } catch {}
-      updateLocalReturn(returnId, { status: 'approved', resolvedAt: new Date().toISOString() });
-      // credit the ledger
-      const ret = getLocalReturns().find(r => r.id === returnId);
+      const returns = Store.getReturns({ firmId });
+      const ret = returns.find(r => r.id === returnId);
+      Store.updateReturnStatus(returnId, 'approved');
       if (ret) {
         try {
           Store.addLedgerEntry(ret.shopId, ret.total, 'credit', ret.id, `Sales Return approved for Order #${(ret.orderId||'').slice(-6).toUpperCase()}`);
@@ -531,8 +524,7 @@ export function init() {
   document.querySelectorAll('.return-reject-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const returnId = btn.dataset.returnId;
-      try { Store.updateReturnStatus(returnId, 'rejected'); } catch {}
-      updateLocalReturn(returnId, { status: 'rejected', resolvedAt: new Date().toISOString() });
+      Store.updateReturnStatus(returnId, 'rejected');
       Toast.success('Return rejected');
       reRender();
     });

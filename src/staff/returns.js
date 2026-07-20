@@ -14,15 +14,6 @@ function formatDate(iso) {
 }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 
-function getLocalReturns() {
-  try { return JSON.parse(localStorage.getItem('kaka_returns') || '[]'); } catch { return []; }
-}
-function addLocalReturn(ret) {
-  const returns = getLocalReturns();
-  returns.push(ret);
-  localStorage.setItem('kaka_returns', JSON.stringify(returns));
-}
-
 function statusBadge(status) {
   const map = { pending: ['#f59e0b', 'Pending'], approved: ['var(--success)', 'Approved'], rejected: ['var(--danger)', 'Rejected'] };
   const [color, label] = map[status] || ['#888', status];
@@ -38,12 +29,8 @@ export function render() {
   const allOrders = Store.getOrders({ firmId, staffId });
   const deliveredOrders = allOrders.filter(o => o.status === 'delivered');
 
-  let myReturns = [];
-  try { myReturns = Store.getReturns({ firmId, staffId }); } catch {}
-  if (!myReturns || myReturns.length === 0) {
-    myReturns = getLocalReturns().filter(r => r.staffId === staffId && r.firmId === firmId)
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  }
+  const myReturns = Store.getReturns({ firmId, staffId })
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
   return `
     <div style="display:flex; flex-direction:column; gap:24px;">
@@ -191,8 +178,7 @@ export function init() {
             createdAt: new Date().toISOString()
           };
 
-          try { Store.addReturn(returnObj); } catch {}
-          addLocalReturn(returnObj);
+          Store.addReturn(returnObj);
 
           Modal.hide();
           Toast.success('Return request submitted!');
