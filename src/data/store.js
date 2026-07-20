@@ -1,109 +1,63 @@
 // ============================================
-// KAKA FMCG — Data Store (localStorage + Supabase Sync)
+// KAKA FMCG — Data Store (Supabase-only, real-time)
+// All data is read from and written to Supabase.
+// In-memory _data is a reactive cache only.
 // ============================================
 
 import { supabase, isSupabaseConfigured } from './supabaseClient.js';
 
-const STORAGE_KEY = 'kaka_fmcg_data';
-
-// Event system for reactivity
+// ---------- Event Bus ----------
 const listeners = {};
-
-function emit(event, data) {
-  (listeners[event] || []).forEach(cb => cb(data));
-}
-
+function emit(event, data) { (listeners[event] || []).forEach(cb => cb(data)); }
 function on(event, callback) {
   if (!listeners[event]) listeners[event] = [];
   listeners[event].push(callback);
-  return () => {
-    listeners[event] = listeners[event].filter(cb => cb !== callback);
-  };
+  return () => { listeners[event] = listeners[event].filter(cb => cb !== callback); };
 }
 
-// ---------- Case Conversion Helpers ----------
+// ---------- Case Conversion ----------
 function keysToCamel(obj) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
   const n = {};
   Object.keys(obj).forEach(k => {
-    const ck = k.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+    const ck = k.replace(/_([a-z])/g, (_, l) => l.toUpperCase());
     n[ck] = obj[k];
   });
   return n;
 }
-
 function keysToSnake(obj) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
   const n = {};
   Object.keys(obj).forEach(k => {
-    const sk = k.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+    const sk = k.replace(/[A-Z]/g, l => `_${l.toLowerCase()}`);
     n[sk] = obj[k];
   });
   return n;
 }
 
-// ---------- Persistence ----------
-function loadData() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch (e) {
-    console.error('Failed to load data:', e);
-  }
-  return null;
+// ---------- UUID ----------
+function uid() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
-function saveData(data) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  } catch (e) {
-    console.error('Failed to save data:', e);
-  }
+// ---------- In-memory cache (reactive, populated from Supabase) ----------
+let _data = {
+  adminPin: localStorage.getItem('kaka_admin_pin') || 'Kaka@123',
+  firms: [], companies: [], products: [], shops: [],
+  staff: [], orders: [], routes: [], ledgers: [],
+  staffLocations: [], targets: [], beatPlans: [], returns: []
+};
+
+function getData() { return _data; }
+
+// ---------- Supabase write helper (fire-and-forget with error logging) ----------
+function sbWrite(promise, label) {
+  promise.then(({ error }) => {
+    if (error) console.error(`[Supabase] ${label}:`, error);
+  }).catch(err => console.error(`[Supabase] ${label}:`, err));
 }
 
-function getData() {
-  return _data;
-}
-
-let _data = null;
-
-function initStore(seedData) {
-  const existing = loadData();
-  if (existing) {
-    _data = existing;
-  } else {
-    _data = seedData;
-  }
-  if (!_data.ledgers) _data.ledgers = [];
-  if (!_data.staffLocations) _data.staffLocations = [];
-  saveData(_data);
-  initLedgers();
-}
-
-function persist() {
-  saveData(_data);
-}
-
-// ---------- Ledger & Location Helpers ----------
-function initLedgers() {
-  if (!_data.ledgers) _data.ledgers = [];
-  
-  if (_data.ledgers.length === 0 && _data.orders && _data.orders.length > 0) {
-    const sortedOrders = [..._data.orders].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-    sortedOrders.forEach(o => {
-      if (o.status === 'cancelled') return;
-      
-      // Debit order
-      addLedgerEntry(o.shopId, o.total, 'debit', o.id, `Order #${o.id.slice(-6).toUpperCase()} approved`, o.createdAt);
-      
-      // If paid, credit order
-      if (o.paymentStatus === 'paid') {
-        addLedgerEntry(o.shopId, o.total, 'credit', o.id, `Payment received for Order #${o.id.slice(-6).toUpperCase()}`, o.deliveredAt || o.createdAt);
-      }
-    });
-  }
-}
-
+// ---------- Ledger Helpers ----------
 function getLedger(shopId) {
   const entries = (_data.ledgers || []).filter(e => e.shopId === shopId);
   entries.sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -112,39 +66,24 @@ function getLedger(shopId) {
 
 function addLedgerEntry(shopId, amount, type, refId = null, description = '', date = null) {
   if (!_data.ledgers) _data.ledgers = [];
-  
-  const entries = _data.ledgers.filter(e => e.shopId === shopId);
+  const entries = (_data.ledgers || []).filter(e => e.shopId === shopId);
   let prevBalance = 0;
   if (entries.length > 0) {
     entries.sort((a, b) => new Date(a.date) - new Date(b.date));
     prevBalance = entries[entries.length - 1].runningBalance;
   }
-  
   const balanceChange = (type === 'debit') ? amount : -amount;
   const runningBalance = prevBalance + balanceChange;
-  
   const entry = {
-    id: uid(),
-    shopId,
+    id: uid(), shopId,
     date: date || new Date().toISOString(),
-    type,
-    refId,
-    description,
-    amount,
-    runningBalance
+    type, refId, description, amount, runningBalance
   };
-  
   _data.ledgers.push(entry);
-  persist();
   emit('ledgers:change', _data.ledgers);
-
   if (isSupabaseConfigured) {
-    supabase.from('ledgers').insert(keysToSnake(entry))
-      .then(({ error }) => {
-        if (error) console.error('Error inserting ledger entry in Supabase:', error);
-      });
+    sbWrite(supabase.from('ledgers').insert(keysToSnake(entry)), 'addLedgerEntry');
   }
-
   return entry;
 }
 
@@ -152,82 +91,56 @@ function addLedgerPayment(shopId, amount, paymentMode, staffId = null) {
   const staff = staffId ? getStaffById(staffId) : null;
   const collector = staff ? staff.name : 'Admin';
   const description = `Partial payment collected in ${paymentMode.toUpperCase()} by ${collector}`;
-  
-  // Add credit entry
   const entry = addLedgerEntry(shopId, amount, 'credit', null, description);
-  
-  // Update orders payment status if overall balance is settled
   const outstanding = getShopOutstanding(shopId);
   if (outstanding.totalOutstanding <= 0) {
-    const orders = _data.orders || [];
-    orders.forEach(o => {
+    (_data.orders || []).forEach(o => {
       if (o.shopId === shopId && o.paymentStatus === 'unpaid' && o.status !== 'cancelled') {
         o.paymentStatus = 'paid';
+        if (isSupabaseConfigured) sbWrite(supabase.from('orders').update({ payment_status: 'paid' }).eq('id', o.id), 'ledgerPayment:orderUpdate');
       }
     });
     emit('orders:change', _data.orders);
   }
-  
   return entry;
 }
 
 function saveStaffLocation(staffId, lat, lng) {
   if (!_data.staffLocations) _data.staffLocations = [];
   const idx = _data.staffLocations.findIndex(l => l.staffId === staffId);
-  const location = {
-    staffId,
-    lat,
-    lng,
-    updatedAt: new Date().toISOString()
-  };
-  if (idx !== -1) {
-    _data.staffLocations[idx] = location;
-  } else {
-    _data.staffLocations.push(location);
-  }
-  persist();
+  const location = { staffId, lat, lng, updatedAt: new Date().toISOString() };
+  if (idx !== -1) _data.staffLocations[idx] = location;
+  else _data.staffLocations.push(location);
   emit('staffLocations:change', _data.staffLocations);
-
-  if (isSupabaseConfigured) {
-    supabase.from('staff_locations').upsert(keysToSnake(location))
-      .then(({ error }) => {
-        if (error) console.error('Error upserting staff location in Supabase:', error);
-      });
-  }
-
+  if (isSupabaseConfigured) sbWrite(supabase.from('staff_locations').upsert(keysToSnake(location)), 'saveStaffLocation');
   return location;
 }
+function getStaffLocations() { return _data.staffLocations || []; }
+function getStaffLocation(staffId) { return (_data.staffLocations || []).find(l => l.staffId === staffId) || null; }
 
-function getStaffLocations() {
-  return _data.staffLocations || [];
-}
-
-function getStaffLocation(staffId) {
-  return (_data.staffLocations || []).find(l => l.staffId === staffId) || null;
-}
-
-// ---------- Supabase Connection & Sync ----------
-async function initSupabase(fallbackSeedData) {
+// ---------- Supabase Init (primary data load) ----------
+async function initSupabase(_seedDataIgnored) {
   if (!isSupabaseConfigured) {
-    initStore(fallbackSeedData);
+    console.warn('[Store] Supabase not configured — app will start with empty data.');
+    emit('data:ready', _data);
     return;
   }
 
   try {
-    console.log('Connecting to Supabase and loading data...');
+    console.log('[Store] Loading all data from Supabase...');
     const [
-      { data: firms, error: eFirms },
-      { data: companies, error: eCompanies },
-      { data: products, error: eProducts },
-      { data: shops, error: eShops },
-      { data: staff, error: eStaff },
-      { data: orders, error: eOrders },
-      { data: routes, error: eRoutes },
-      { data: ledgers, error: eLedgers },
+      { data: firms,          error: eFirms },
+      { data: companies,      error: eCompanies },
+      { data: products,       error: eProducts },
+      { data: shops,          error: eShops },
+      { data: staff,          error: eStaff },
+      { data: orders,         error: eOrders },
+      { data: routes,         error: eRoutes },
+      { data: ledgers,        error: eLedgers },
       { data: staffLocations, error: eStaffLocations },
-      { data: targets, error: eTargets },
-      { data: beatPlans, error: eBeatPlans },
-      { data: returns, error: eReturns }
+      { data: targets },
+      { data: beatPlans },
+      { data: returns }
     ] = await Promise.all([
       supabase.from('firms').select('*'),
       supabase.from('companies').select('*'),
@@ -244,693 +157,377 @@ async function initSupabase(fallbackSeedData) {
     ]);
 
     if (eFirms || eCompanies || eProducts || eShops || eStaff || eOrders || eRoutes || eLedgers || eStaffLocations) {
-      throw new Error('Failed to query one or more tables from Supabase');
+      throw new Error('Failed to load one or more tables from Supabase');
     }
 
     _data = {
       adminPin: localStorage.getItem('kaka_admin_pin') || 'Kaka@123',
-      firms: firms ? firms.map(keysToCamel) : [],
-      companies: companies ? companies.map(keysToCamel) : [],
-      products: products ? products.map(keysToCamel) : [],
-      shops: shops ? shops.map(keysToCamel) : [],
-      staff: staff ? staff.map(keysToCamel) : [],
-      orders: orders ? orders.map(keysToCamel) : [],
-      routes: routes ? routes.map(keysToCamel) : [],
-      ledgers: ledgers ? ledgers.map(keysToCamel) : [],
-      staffLocations: staffLocations ? staffLocations.map(keysToCamel) : [],
-      targets: targets ? targets.map(keysToCamel) : [],
-      beatPlans: beatPlans ? beatPlans.map(keysToCamel) : [],
-      returns: returns ? returns.map(keysToCamel) : []
+      firms:          (firms          || []).map(keysToCamel),
+      companies:      (companies      || []).map(keysToCamel),
+      products:       (products       || []).map(keysToCamel),
+      shops:          (shops          || []).map(keysToCamel),
+      staff:          (staff          || []).map(keysToCamel),
+      orders:         (orders         || []).map(keysToCamel),
+      routes:         (routes         || []).map(keysToCamel),
+      ledgers:        (ledgers        || []).map(keysToCamel),
+      staffLocations: (staffLocations || []).map(keysToCamel),
+      targets:        (targets        || []).map(keysToCamel),
+      beatPlans:      (beatPlans      || []).map(keysToCamel),
+      returns:        (returns        || []).map(keysToCamel),
     };
-    initLedgers();
 
-    console.log('Data loaded successfully from Supabase:', _data);
+    console.log(`[Store] Loaded: ${_data.shops.length} shops, ${_data.staff.length} staff, ${_data.orders.length} orders`);
 
-    // Setup Supabase Realtime listeners
-    supabase.channel('kaka-realtime-channel')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public' },
-        (payload) => {
-          handleRealtimeChange(payload);
-        }
-      )
-      .subscribe((status) => {
-        console.log('Supabase Realtime status:', status);
-      });
+    // Setup Supabase Realtime
+    supabase.channel('kaka-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public' }, handleRealtimeChange)
+      .subscribe(status => console.log('[Realtime]', status));
 
-  } catch (error) {
-    console.error('Supabase initialization failed, falling back to local mode:', error);
-    initStore(fallbackSeedData);
+    emit('data:ready', _data);
+  } catch (err) {
+    console.error('[Store] Supabase load failed:', err);
+    emit('data:error', err);
   }
 }
 
 function handleRealtimeChange(payload) {
   const { table, eventType, new: newRow, old: oldRow } = payload;
-  let dataKey = table;
-  if (table === 'staff_locations') dataKey = 'staffLocations';
-  if (table === 'beat_plans') dataKey = 'beatPlans';
-  
-  if (!_data || !_data[dataKey]) return;
+  let key = table;
+  if (table === 'staff_locations') key = 'staffLocations';
+  if (table === 'beat_plans') key = 'beatPlans';
+  if (!_data || !_data[key]) return;
 
+  const keyField = key === 'staffLocations' ? 'staffId' : 'id';
   const camelNew = keysToCamel(newRow);
   const camelOld = keysToCamel(oldRow);
 
-  console.log(`Realtime change received: [${table}] ${eventType}`, payload);
-
-  const keyField = (dataKey === 'staffLocations') ? 'staffId' : 'id';
-
   if (eventType === 'INSERT') {
-    if (!_data[dataKey].some(item => item[keyField] === camelNew[keyField])) {
-      _data[dataKey].push(camelNew);
-    }
+    if (!_data[key].some(item => item[keyField] === camelNew[keyField])) _data[key].push(camelNew);
   } else if (eventType === 'UPDATE') {
-    const idx = _data[dataKey].findIndex(item => item[keyField] === camelNew[keyField]);
-    if (idx !== -1) {
-      _data[dataKey][idx] = { ..._data[dataKey][idx], ...camelNew };
-    }
+    const idx = _data[key].findIndex(item => item[keyField] === camelNew[keyField]);
+    if (idx !== -1) _data[key][idx] = { ..._data[key][idx], ...camelNew };
   } else if (eventType === 'DELETE') {
-    _data[dataKey] = _data[dataKey].filter(item => item[keyField] !== camelOld[keyField]);
+    _data[key] = _data[key].filter(item => item[keyField] !== camelOld[keyField]);
   }
 
-  // Trigger reactive redraws
-  emit(`${dataKey}:change`, _data[dataKey]);
+  emit(`${key}:change`, _data[key]);
   emit('data:change', _data);
 }
 
-// ---------- UUID ----------
-function uid() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-}
-
 // ---------- Firms ----------
-function getFirms() {
-  return _data.firms || [];
-}
-
-function getFirmById(id) {
-  return (_data.firms || []).find(f => f.id === id);
-}
+function getFirms()      { return _data.firms || []; }
+function getFirmById(id) { return (_data.firms || []).find(f => f.id === id); }
 
 // ---------- Companies ----------
 function getCompanies(firmId) {
-  let companies = _data.companies || [];
-  if (firmId) companies = companies.filter(c => c.firmId === firmId);
-  return companies;
+  let c = _data.companies || [];
+  if (firmId) c = c.filter(x => x.firmId === firmId);
+  return c;
 }
-
-function getCompanyById(id) {
-  return (_data.companies || []).find(c => c.id === id);
-}
+function getCompanyById(id) { return (_data.companies || []).find(c => c.id === id); }
 
 function addCompany(company) {
-  const newCompany = { id: uid(), isActive: true, ...company };
-  _data.companies.push(newCompany);
+  const rec = { id: uid(), isActive: true, ...company };
+  _data.companies.push(rec);
   emit('companies:change', _data.companies);
-
-  if (isSupabaseConfigured) {
-    supabase.from('companies').insert(keysToSnake(newCompany))
-      .then(({ error }) => { if (error) console.error('Error adding company:', error); });
-  } else {
-    persist();
-  }
-  return newCompany;
+  if (isSupabaseConfigured) sbWrite(supabase.from('companies').insert(keysToSnake(rec)), 'addCompany');
+  return rec;
 }
-
 function updateCompany(id, updates) {
   const idx = _data.companies.findIndex(c => c.id === id);
   if (idx === -1) return null;
   _data.companies[idx] = { ..._data.companies[idx], ...updates };
   emit('companies:change', _data.companies);
-
-  if (isSupabaseConfigured) {
-    supabase.from('companies').update(keysToSnake(updates)).eq('id', id)
-      .then(({ error }) => { if (error) console.error('Error updating company:', error); });
-  } else {
-    persist();
-  }
+  if (isSupabaseConfigured) sbWrite(supabase.from('companies').update(keysToSnake(updates)).eq('id', id), 'updateCompany');
   return _data.companies[idx];
 }
-
 function deleteCompany(id) {
   _data.companies = _data.companies.filter(c => c.id !== id);
-  // Also delete products of this company
-  _data.products = _data.products.filter(p => p.companyId !== id);
+  _data.products  = _data.products.filter(p => p.companyId !== id);
   emit('companies:change', _data.companies);
   emit('products:change', _data.products);
-
   if (isSupabaseConfigured) {
-    Promise.all([
-      supabase.from('companies').delete().eq('id', id),
-      supabase.from('products').delete().eq('company_id', id)
-    ]).then(results => {
-      results.forEach(({ error }) => { if (error) console.error('Error deleting company/products:', error); });
-    });
-  } else {
-    persist();
+    sbWrite(supabase.from('companies').delete().eq('id', id), 'deleteCompany');
+    sbWrite(supabase.from('products').delete().eq('company_id', id), 'deleteCompany:products');
   }
   return true;
 }
 
 // ---------- Products ----------
 function getProducts(filters = {}) {
-  let products = _data.products || [];
-  if (filters.firmId) products = products.filter(p => p.firmId === filters.firmId);
-  if (filters.companyId) products = products.filter(p => p.companyId === filters.companyId);
-  if (filters.isActive !== undefined) products = products.filter(p => p.isActive === filters.isActive);
-  if (filters.search) {
-    const q = filters.search.toLowerCase();
-    products = products.filter(p => p.name.toLowerCase().includes(q));
-  }
-  return products;
+  let p = _data.products || [];
+  if (filters.firmId)    p = p.filter(x => x.firmId    === filters.firmId);
+  if (filters.companyId) p = p.filter(x => x.companyId === filters.companyId);
+  if (filters.isActive !== undefined) p = p.filter(x => x.isActive === filters.isActive);
+  if (filters.search) { const q = filters.search.toLowerCase(); p = p.filter(x => x.name.toLowerCase().includes(q)); }
+  return p;
 }
-
-function getProductById(id) {
-  return (_data.products || []).find(p => p.id === id);
-}
-
+function getProductById(id)  { return (_data.products || []).find(p => p.id === id); }
 function getProductPrice(product, qty) {
   if (!product) return 0;
-  if (!qty || qty <= 0) return product.sellingPrice;
-  if (!product.tierPrices || product.tierPrices.length === 0) return product.sellingPrice;
+  if (!qty || qty <= 0 || !product.tierPrices || product.tierPrices.length === 0) return product.sellingPrice;
   const sorted = [...product.tierPrices].sort((a, b) => b.minQty - a.minQty);
   const matched = sorted.find(t => qty >= t.minQty);
   return matched ? matched.price : product.sellingPrice;
 }
-
 function addProduct(product) {
-  const newProduct = { id: uid(), isActive: true, ...product };
-  _data.products.push(newProduct);
+  const rec = { id: uid(), isActive: true, ...product };
+  _data.products.push(rec);
   emit('products:change', _data.products);
-
-  if (isSupabaseConfigured) {
-    supabase.from('products').insert(keysToSnake(newProduct))
-      .then(({ error }) => { if (error) console.error('Error adding product:', error); });
-  } else {
-    persist();
-  }
-  return newProduct;
+  if (isSupabaseConfigured) sbWrite(supabase.from('products').insert(keysToSnake(rec)), 'addProduct');
+  return rec;
 }
-
 function updateProduct(id, updates) {
   const idx = _data.products.findIndex(p => p.id === id);
   if (idx === -1) return null;
   _data.products[idx] = { ..._data.products[idx], ...updates };
   emit('products:change', _data.products);
-
-  if (isSupabaseConfigured) {
-    supabase.from('products').update(keysToSnake(updates)).eq('id', id)
-      .then(({ error }) => { if (error) console.error('Error updating product:', error); });
-  } else {
-    persist();
-  }
+  if (isSupabaseConfigured) sbWrite(supabase.from('products').update(keysToSnake(updates)).eq('id', id), 'updateProduct');
   return _data.products[idx];
 }
-
 function deleteProduct(id) {
   _data.products = _data.products.filter(p => p.id !== id);
   emit('products:change', _data.products);
-
-  if (isSupabaseConfigured) {
-    supabase.from('products').delete().eq('id', id)
-      .then(({ error }) => { if (error) console.error('Error deleting product:', error); });
-  } else {
-    persist();
-  }
+  if (isSupabaseConfigured) sbWrite(supabase.from('products').delete().eq('id', id), 'deleteProduct');
   return true;
 }
 
 // ---------- Shops ----------
 function getShops(filters = {}) {
-  let shops = _data.shops || [];
-  if (filters.routeId) shops = shops.filter(s => s.routeId === filters.routeId);
+  let s = _data.shops || [];
+  if (filters.routeId) s = s.filter(x => x.routeId === filters.routeId);
   if (filters.search) {
     const q = filters.search.toLowerCase();
-    shops = shops.filter(s =>
-      s.name.toLowerCase().includes(q) ||
-      s.ownerName.toLowerCase().includes(q)
-    );
+    s = s.filter(x => x.name.toLowerCase().includes(q) || (x.ownerName || '').toLowerCase().includes(q));
   }
-  return shops;
+  return s;
 }
-
-function getShopById(id) {
-  return (_data.shops || []).find(s => s.id === id);
-}
-
+function getShopById(id) { return (_data.shops || []).find(s => s.id === id); }
 function addShop(shop) {
-  const newShop = { id: uid(), ...shop };
-  _data.shops.push(newShop);
+  const rec = { id: uid(), ...shop };
+  _data.shops.push(rec);
   emit('shops:change', _data.shops);
-
-  if (isSupabaseConfigured) {
-    supabase.from('shops').insert(keysToSnake(newShop))
-      .then(({ error }) => { if (error) console.error('Error adding shop:', error); });
-  } else {
-    persist();
-  }
-  return newShop;
+  if (isSupabaseConfigured) sbWrite(supabase.from('shops').insert(keysToSnake(rec)), 'addShop');
+  return rec;
 }
-
 function updateShop(id, updates) {
   const idx = _data.shops.findIndex(s => s.id === id);
   if (idx === -1) return null;
   _data.shops[idx] = { ..._data.shops[idx], ...updates };
   emit('shops:change', _data.shops);
-
-  if (isSupabaseConfigured) {
-    supabase.from('shops').update(keysToSnake(updates)).eq('id', id)
-      .then(({ error }) => { if (error) console.error('Error updating shop:', error); });
-  } else {
-    persist();
-  }
+  if (isSupabaseConfigured) sbWrite(supabase.from('shops').update(keysToSnake(updates)).eq('id', id), 'updateShop');
   return _data.shops[idx];
 }
-
 function deleteShop(id) {
   _data.shops = _data.shops.filter(s => s.id !== id);
-  // Remove from routes
-  _data.routes.forEach(r => {
-    r.shopIds = (r.shopIds || []).filter(sid => sid !== id);
-  });
-  
+  _data.routes.forEach(r => { r.shopIds = (r.shopIds || []).filter(sid => sid !== id); });
   emit('shops:change', _data.shops);
   emit('routes:change', _data.routes);
-
   if (isSupabaseConfigured) {
-    const routeUpdates = _data.routes.map(r => 
-      supabase.from('routes').update({ shop_ids: r.shopIds }).eq('id', r.id)
-    );
-    Promise.all([
-      supabase.from('shops').delete().eq('id', id),
-      ...routeUpdates
-    ]).then(results => {
-      results.forEach(({ error }) => { if (error) console.error('Error deleting shop/updating routes:', error); });
-    });
-  } else {
-    persist();
+    sbWrite(supabase.from('shops').delete().eq('id', id), 'deleteShop');
+    _data.routes.forEach(r => sbWrite(supabase.from('routes').update({ shop_ids: r.shopIds }).eq('id', r.id), 'deleteShop:routeUpdate'));
   }
   return true;
 }
-
 function getShopOutstanding(shopId) {
   const entries = (_data.ledgers || []).filter(e => e.shopId === shopId);
-  if (entries.length === 0) {
-    return {
-      totalOutstanding: 0,
-      totalPenalty: 0,
-      unpaidOrdersCount: 0,
-      details: []
-    };
-  }
-  
+  if (entries.length === 0) return { totalOutstanding: 0, totalPenalty: 0, unpaidOrdersCount: 0, details: [] };
   entries.sort((a, b) => new Date(a.date) - new Date(b.date));
-  const latestEntry = entries[entries.length - 1];
-  const ledgerBalance = latestEntry.runningBalance;
-  
-  const unpaidDetails = [];
-  let totalPenalty = 0;
+  const ledgerBalance = entries[entries.length - 1].runningBalance;
+  const debitEntries  = entries.filter(e => e.type === 'debit');
+  const creditRefIds  = new Set(entries.filter(e => e.type === 'credit').map(e => e.refId).filter(Boolean));
   const now = new Date();
-  
-  // Find unpaid debit transactions (orders)
-  const debitEntries = entries.filter(e => e.type === 'debit');
-  const creditEntries = entries.filter(e => e.type === 'credit');
-  const creditRefIds = new Set(creditEntries.map(e => e.refId).filter(Boolean));
-  
+  let totalPenalty = 0;
+  const unpaidDetails = [];
   debitEntries.forEach(debit => {
     if (!creditRefIds.has(debit.refId)) {
       const order = getOrderById(debit.refId);
       if (order && order.status !== 'cancelled' && order.paymentStatus !== 'paid') {
-        const created = new Date(order.createdAt);
-        const diffTime = Math.abs(now - created);
-        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-        
-        let penalty = 0;
-        if (diffDays > 7) {
-          penalty = (diffDays - 7) * 50;
-          totalPenalty += penalty;
-        }
-        
-        unpaidDetails.push({
-          orderId: order.id,
-          originalTotal: order.total,
-          penalty,
-          daysOld: diffDays,
-          outstanding: order.total + penalty
-        });
+        const diffDays = Math.floor(Math.abs(now - new Date(order.createdAt)) / 86400000);
+        const penalty  = diffDays > 7 ? (diffDays - 7) * 50 : 0;
+        totalPenalty += penalty;
+        unpaidDetails.push({ orderId: order.id, originalTotal: order.total, penalty, daysOld: diffDays, outstanding: order.total + penalty });
       }
     }
   });
-
-  return {
-    totalOutstanding: Math.max(0, ledgerBalance + totalPenalty),
-    totalPenalty,
-    unpaidOrdersCount: unpaidDetails.length,
-    details: unpaidDetails
-  };
+  return { totalOutstanding: Math.max(0, ledgerBalance + totalPenalty), totalPenalty, unpaidOrdersCount: unpaidDetails.length, details: unpaidDetails };
 }
-
 function settleShopOutstanding(shopId) {
   const outstanding = getShopOutstanding(shopId);
   if (outstanding.totalOutstanding <= 0) return 0;
-  
-  // Add credit entry
   addLedgerEntry(shopId, outstanding.totalOutstanding, 'credit', null, 'Full outstanding balance settlement');
-  
-  // Mark unpaid orders as paid
-  const orders = _data.orders || [];
-  const dbUpdates = [];
-  
-  orders.forEach(o => {
+  (_data.orders || []).forEach(o => {
     if (o.shopId === shopId && o.paymentStatus === 'unpaid' && o.status !== 'cancelled') {
       o.paymentStatus = 'paid';
-      
-      if (isSupabaseConfigured) {
-        dbUpdates.push(
-          supabase.from('orders').update({ payment_status: 'paid' }).eq('id', o.id)
-        );
-      }
+      if (isSupabaseConfigured) sbWrite(supabase.from('orders').update({ payment_status: 'paid' }).eq('id', o.id), 'settleShop');
     }
   });
-
   emit('orders:change', _data.orders);
-
-  if (isSupabaseConfigured) {
-    Promise.all(dbUpdates).then(results => {
-      results.forEach(({ error }) => { if (error) console.error('Error settling orders on Supabase:', error); });
-    });
-  } else {
-    persist();
-  }
   return 1;
 }
 
 // ---------- Orders ----------
 function getOrders(filters = {}) {
-  let orders = _data.orders || [];
-  if (filters.firmId) orders = orders.filter(o => o.firmId === filters.firmId);
-  if (filters.staffId) orders = orders.filter(o => o.staffId === filters.staffId);
-  if (filters.status) orders = orders.filter(o => o.status === filters.status);
-  if (filters.shopId) orders = orders.filter(o => o.shopId === filters.shopId);
-  // Sort by createdAt descending
-  orders.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  return orders;
+  let o = _data.orders || [];
+  if (filters.firmId)  o = o.filter(x => x.firmId  === filters.firmId);
+  if (filters.staffId) o = o.filter(x => x.staffId === filters.staffId);
+  if (filters.status)  o = o.filter(x => x.status  === filters.status);
+  if (filters.shopId)  o = o.filter(x => x.shopId  === filters.shopId);
+  o.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  return o;
 }
-
-function getOrderById(id) {
-  return (_data.orders || []).find(o => o.id === id);
-}
-
+function getOrderById(id) { return (_data.orders || []).find(o => o.id === id); }
 function addOrder(order) {
-  const newOrder = {
-    id: uid(),
-    status: 'pending',
-    createdAt: new Date().toISOString(),
-    penaltyAdded: 0,
-    ...order
-  };
-  _data.orders.push(newOrder);
+  const rec = { id: uid(), status: 'pending', createdAt: new Date().toISOString(), penaltyAdded: 0, ...order };
+  _data.orders.push(rec);
   emit('orders:change', _data.orders);
-
-  if (isSupabaseConfigured) {
-    supabase.from('orders').insert(keysToSnake(newOrder))
-      .then(({ error }) => { if (error) console.error('Error adding order:', error); });
-  } else {
-    persist();
-  }
-  return newOrder;
+  if (isSupabaseConfigured) sbWrite(supabase.from('orders').insert(keysToSnake(rec)), 'addOrder');
+  return rec;
 }
-
 function updateOrderStatus(id, status) {
   const idx = _data.orders.findIndex(o => o.id === id);
   if (idx === -1) return null;
   const oldStatus = _data.orders[idx].status;
   _data.orders[idx].status = status;
   const updates = { status };
-  
   if (status === 'confirmed') {
     _data.orders[idx].confirmedAt = new Date().toISOString();
     updates.confirmedAt = _data.orders[idx].confirmedAt;
-    
-    // Debit order
     addLedgerEntry(_data.orders[idx].shopId, _data.orders[idx].total, 'debit', id, `Order #${id.slice(-6).toUpperCase()} approved`);
   } else if (status === 'delivered') {
     _data.orders[idx].deliveredAt = new Date().toISOString();
     updates.deliveredAt = _data.orders[idx].deliveredAt;
-    
     if (_data.orders[idx].paymentStatus === 'paid') {
       addLedgerEntry(_data.orders[idx].shopId, _data.orders[idx].total, 'credit', id, `Payment received on delivery for Order #${id.slice(-6).toUpperCase()}`);
     }
   } else if (status === 'cancelled') {
     if (oldStatus === 'confirmed' || oldStatus === 'delivered') {
-      addLedgerEntry(_data.orders[idx].shopId, _data.orders[idx].total, 'credit', id, `Order #${id.slice(-6).toUpperCase()} cancelled (Reverted debit)`);
+      addLedgerEntry(_data.orders[idx].shopId, _data.orders[idx].total, 'credit', id, `Order #${id.slice(-6).toUpperCase()} cancelled (reverted)`);
     }
   }
-  
   emit('orders:change', _data.orders);
-
-  if (isSupabaseConfigured) {
-    const dbUpdates = { status }; // Only status field is updated in DB
-    supabase.from('orders').update(keysToSnake(dbUpdates)).eq('id', id)
-      .then(({ error }) => { if (error) console.error('Error updating order status:', error); });
-  } else {
-    persist();
-  }
+  if (isSupabaseConfigured) sbWrite(supabase.from('orders').update(keysToSnake(updates)).eq('id', id), 'updateOrderStatus');
   return _data.orders[idx];
 }
-
 function updateOrder(id, updates) {
   const idx = _data.orders.findIndex(o => o.id === id);
   if (idx === -1) return null;
-  
   const oldOrder = { ..._data.orders[idx] };
   _data.orders[idx] = { ..._data.orders[idx], ...updates };
   const newOrder = _data.orders[idx];
-  
-  // Ledger operations
-  if (updates.status === 'confirmed' && oldOrder.status !== 'confirmed') {
-    addLedgerEntry(newOrder.shopId, newOrder.total, 'debit', id, `Order #${id.slice(-6).toUpperCase()} approved`);
-  }
-  
-  if (updates.status === 'delivered' && oldOrder.status !== 'delivered') {
-    if (newOrder.paymentStatus === 'paid') {
-      addLedgerEntry(newOrder.shopId, newOrder.total, 'credit', id, `Payment received for Order #${id.slice(-6).toUpperCase()}`);
-    }
-  }
-  
-  if (updates.paymentStatus === 'paid' && oldOrder.paymentStatus !== 'paid') {
-    addLedgerEntry(newOrder.shopId, newOrder.total, 'credit', id, `Payment received for Order #${id.slice(-6).toUpperCase()}`);
-  }
-  
-  if (updates.status === 'cancelled' && oldOrder.status !== 'cancelled') {
-    if (oldOrder.status === 'confirmed' || oldOrder.status === 'delivered') {
-      addLedgerEntry(newOrder.shopId, newOrder.total, 'credit', id, `Order #${id.slice(-6).toUpperCase()} cancelled (Reverted debit)`);
-    }
-  }
-  
+  if (updates.status === 'confirmed'  && oldOrder.status !== 'confirmed')  addLedgerEntry(newOrder.shopId, newOrder.total, 'debit',  id, `Order #${id.slice(-6).toUpperCase()} approved`);
+  if (updates.status === 'delivered'  && oldOrder.status !== 'delivered'  && newOrder.paymentStatus === 'paid') addLedgerEntry(newOrder.shopId, newOrder.total, 'credit', id, `Payment received for Order #${id.slice(-6).toUpperCase()}`);
+  if (updates.paymentStatus === 'paid' && oldOrder.paymentStatus !== 'paid') addLedgerEntry(newOrder.shopId, newOrder.total, 'credit', id, `Payment received for Order #${id.slice(-6).toUpperCase()}`);
+  if (updates.status === 'cancelled'  && oldOrder.status !== 'cancelled'  && (oldOrder.status === 'confirmed' || oldOrder.status === 'delivered')) addLedgerEntry(newOrder.shopId, newOrder.total, 'credit', id, `Order #${id.slice(-6).toUpperCase()} cancelled (reverted)`);
   emit('orders:change', _data.orders);
-
   if (isSupabaseConfigured) {
-    const dbUpdates = { ...updates };
-    delete dbUpdates.deliveredAt;
-    delete dbUpdates.confirmedAt;
-    
-    supabase.from('orders').update(keysToSnake(dbUpdates)).eq('id', id)
-      .then(({ error }) => { if (error) console.error('Error updating order:', error); });
-  } else {
-    persist();
+    const dbUp = { ...updates };
+    delete dbUp.deliveredAt; delete dbUp.confirmedAt;
+    sbWrite(supabase.from('orders').update(keysToSnake(dbUp)).eq('id', id), 'updateOrder');
   }
   return _data.orders[idx];
 }
-
 function deleteOrder(id) {
   _data.orders = _data.orders.filter(o => o.id !== id);
   emit('orders:change', _data.orders);
-
-  if (isSupabaseConfigured) {
-    supabase.from('orders').delete().eq('id', id)
-      .then(({ error }) => { if (error) console.error('Error deleting order:', error); });
-  } else {
-    persist();
-  }
+  if (isSupabaseConfigured) sbWrite(supabase.from('orders').delete().eq('id', id), 'deleteOrder');
   return true;
 }
 
 // ---------- Routes ----------
 function getRoutes(firmId) {
-  let routes = _data.routes || [];
-  if (firmId) routes = routes.filter(r => r.firmId === firmId);
-  return routes;
+  let r = _data.routes || [];
+  if (firmId) r = r.filter(x => x.firmId === firmId);
+  return r;
 }
-
-function getRouteById(id) {
-  return (_data.routes || []).find(r => r.id === id);
-}
-
+function getRouteById(id) { return (_data.routes || []).find(r => r.id === id); }
 function addRoute(route) {
-  const newRoute = { id: uid(), shopIds: [], ...route };
-  _data.routes.push(newRoute);
+  const rec = { id: uid(), shopIds: [], ...route };
+  _data.routes.push(rec);
   emit('routes:change', _data.routes);
-
-  if (isSupabaseConfigured) {
-    supabase.from('routes').insert(keysToSnake(newRoute))
-      .then(({ error }) => { if (error) console.error('Error adding route:', error); });
-  } else {
-    persist();
-  }
-  return newRoute;
+  if (isSupabaseConfigured) sbWrite(supabase.from('routes').insert(keysToSnake(rec)), 'addRoute');
+  return rec;
 }
-
 function updateRoute(id, updates) {
   const idx = _data.routes.findIndex(r => r.id === id);
   if (idx === -1) return null;
   _data.routes[idx] = { ..._data.routes[idx], ...updates };
   emit('routes:change', _data.routes);
-
-  if (isSupabaseConfigured) {
-    supabase.from('routes').update(keysToSnake(updates)).eq('id', id)
-      .then(({ error }) => { if (error) console.error('Error updating route:', error); });
-  } else {
-    persist();
-  }
+  if (isSupabaseConfigured) sbWrite(supabase.from('routes').update(keysToSnake(updates)).eq('id', id), 'updateRoute');
   return _data.routes[idx];
 }
-
 function deleteRoute(id) {
-  // Unassign shops from this route
-  _data.shops.forEach(s => {
-    if (s.routeId === id) s.routeId = null;
-  });
+  _data.shops.forEach(s => { if (s.routeId === id) s.routeId = null; });
   _data.routes = _data.routes.filter(r => r.id !== id);
-  
   emit('routes:change', _data.routes);
   emit('shops:change', _data.shops);
-
   if (isSupabaseConfigured) {
-    const shopUpdates = _data.shops.map(s => 
-      supabase.from('shops').update({ route_id: s.routeId }).eq('id', s.id)
-    );
-    Promise.all([
-      supabase.from('routes').delete().eq('id', id),
-      ...shopUpdates
-    ]).then(results => {
-      results.forEach(({ error }) => { if (error) console.error('Error deleting route/updating shops:', error); });
-    });
-  } else {
-    persist();
+    sbWrite(supabase.from('routes').delete().eq('id', id), 'deleteRoute');
+    _data.shops.forEach(s => sbWrite(supabase.from('shops').update({ route_id: s.routeId }).eq('id', s.id), 'deleteRoute:shopUpdate'));
   }
   return true;
 }
 
 // ---------- Staff ----------
-function getStaff() {
-  return _data.staff || [];
-}
-
-function getStaffById(id) {
-  return (_data.staff || []).find(s => s.id === id);
-}
-
+function getStaff()       { return _data.staff || []; }
+function getStaffById(id) { return (_data.staff || []).find(s => s.id === id); }
 function addStaff(staff) {
-  const newStaff = { id: uid(), ...staff };
-  _data.staff.push(newStaff);
+  const rec = { id: uid(), ...staff };
+  _data.staff.push(rec);
   emit('staff:change', _data.staff);
-
-  if (isSupabaseConfigured) {
-    supabase.from('staff').insert(keysToSnake(newStaff))
-      .then(({ error }) => { if (error) console.error('Error adding staff:', error); });
-  } else {
-    persist();
-  }
-  return newStaff;
+  if (isSupabaseConfigured) sbWrite(supabase.from('staff').insert(keysToSnake(rec)), 'addStaff');
+  return rec;
 }
-
 function updateStaff(id, updates) {
   const idx = _data.staff.findIndex(s => s.id === id);
   if (idx === -1) return null;
   _data.staff[idx] = { ..._data.staff[idx], ...updates };
   emit('staff:change', _data.staff);
-
-  if (isSupabaseConfigured) {
-    supabase.from('staff').update(keysToSnake(updates)).eq('id', id)
-      .then(({ error }) => { if (error) console.error('Error updating staff:', error); });
-  } else {
-    persist();
-  }
+  if (isSupabaseConfigured) sbWrite(supabase.from('staff').update(keysToSnake(updates)).eq('id', id), 'updateStaff');
   return _data.staff[idx];
 }
-
 function deleteStaff(id) {
   _data.staff = _data.staff.filter(s => s.id !== id);
   emit('staff:change', _data.staff);
-
-  if (isSupabaseConfigured) {
-    supabase.from('staff').delete().eq('id', id)
-      .then(({ error }) => { if (error) console.error('Error deleting staff:', error); });
-  } else {
-    persist();
-  }
+  if (isSupabaseConfigured) sbWrite(supabase.from('staff').delete().eq('id', id), 'deleteStaff');
   return true;
 }
 
 // ---------- Auth ----------
-function getAdminPin() {
-  return _data.adminPin || '1234';
-}
-
+function getAdminPin() { return _data.adminPin || 'Kaka@123'; }
 function setAdminPin(pin) {
   _data.adminPin = pin;
-  persist();
+  localStorage.setItem('kaka_admin_pin', pin); // PIN is tiny and doesn't need a DB table
 }
 
 function authenticate(username, password) {
   const u = (username || '').trim().toLowerCase();
   const p = (password || '').trim();
-
-  // Check admin
-  if (u === 'kaka' && p === 'Kaka@123') {
-    return { role: 'admin', requires2fa: true, user: { name: 'Kaka', id: 'admin' } };
-  }
-
-  // Check staff from in-memory data
+  if (u === 'kaka' && p === 'Kaka@123') return { role: 'admin', requires2fa: true, user: { name: 'Kaka', id: 'admin' } };
   const staffList = _data ? (_data.staff || []) : [];
   const staff = staffList.find(s => {
     const sUser = (s.username || s.name || '').trim().toLowerCase();
     const sPass = (s.password || s.pin || '').trim();
     return sUser === u && sPass === p;
   });
-
   if (staff) {
-    if (staff.isBlocked) {
-      return { role: 'staff', blocked: true, user: { name: staff.name, id: staff.id } };
-    }
+    if (staff.isBlocked) return { role: 'staff', blocked: true, user: { name: staff.name, id: staff.id } };
     return { role: 'staff', user: { name: staff.name, id: staff.id } };
   }
   return null;
 }
 
-// Async version — queries Supabase directly so it works on any device even before full sync
 async function authenticateAsync(username, password) {
   const u = (username || '').trim().toLowerCase();
   const p = (password || '').trim();
-
-  // Check admin first (hardcoded, always works)
-  if (u === 'kaka' && p === 'Kaka@123') {
-    return { role: 'admin', requires2fa: true, user: { name: 'Kaka', id: 'admin' } };
-  }
-
-  // Try local in-memory staff first (fast path)
+  if (u === 'kaka' && p === 'Kaka@123') return { role: 'admin', requires2fa: true, user: { name: 'Kaka', id: 'admin' } };
+  // Try local cache first (fast path)
   const localResult = authenticate(username, password);
   if (localResult) return localResult;
-
-  // Fallback: query Supabase directly so any device can log in
+  // Direct Supabase lookup (works on any device before cache is warm)
   if (isSupabaseConfigured) {
     try {
-      const { data: staffRows, error } = await supabase
-        .from('staff')
-        .select('*')
-        .or(`username.eq.${u},name.ilike.${u}`);
-
+      const { data: staffRows, error } = await supabase.from('staff').select('*').or(`username.eq.${u},name.ilike.${u}`);
       if (!error && staffRows && staffRows.length > 0) {
         const staff = staffRows.map(keysToCamel).find(s => {
           const sUser = (s.username || s.name || '').trim().toLowerCase();
@@ -938,52 +535,40 @@ async function authenticateAsync(username, password) {
           return sUser === u && sPass === p;
         });
         if (staff) {
-          // Merge into local data so subsequent checks work
           if (_data) {
             const exists = (_data.staff || []).some(s => s.id === staff.id);
             if (!exists) _data.staff = [...(_data.staff || []), staff];
           }
-          if (staff.isBlocked) {
-            return { role: 'staff', blocked: true, user: { name: staff.name, id: staff.id } };
-          }
+          if (staff.isBlocked) return { role: 'staff', blocked: true, user: { name: staff.name, id: staff.id } };
           return { role: 'staff', user: { name: staff.name, id: staff.id } };
         }
       }
     } catch (err) {
-      console.warn('Supabase auth fallback failed:', err);
+      console.warn('[Auth] Supabase fallback failed:', err);
     }
   }
-
   return null;
 }
 
 function getSession() {
   try {
-    // Try localStorage first (persists across tabs and browser restarts)
     const raw = localStorage.getItem('kaka_session');
     if (raw) return JSON.parse(raw);
-    // Fallback: sessionStorage (for legacy compatibility)
     const rawSS = sessionStorage.getItem('kaka_session');
     if (rawSS) {
       const parsed = JSON.parse(rawSS);
-      // Migrate to localStorage
       localStorage.setItem('kaka_session', rawSS);
       sessionStorage.removeItem('kaka_session');
       return parsed;
     }
     return null;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
-
 function setSession(session) {
   const val = JSON.stringify(session);
   localStorage.setItem('kaka_session', val);
-  // Keep sessionStorage in sync for any legacy code
   try { sessionStorage.setItem('kaka_session', val); } catch {}
 }
-
 function clearSession() {
   localStorage.removeItem('kaka_session');
   sessionStorage.removeItem('kaka_session');
@@ -993,26 +578,19 @@ function clearSession() {
 function getStats(firmId) {
   const orders = getOrders(firmId ? { firmId } : {});
   const today = new Date().toISOString().split('T')[0];
-  const todayOrders = orders.filter(o => o.createdAt.split('T')[0] === today);
+  const todayOrders   = orders.filter(o => o.createdAt.split('T')[0] === today);
   const pendingOrders = orders.filter(o => o.status === 'pending');
-  const todayRevenue = todayOrders
-    .filter(o => o.status !== 'cancelled')
-    .reduce((sum, o) => sum + (o.total || 0), 0);
-  const totalRevenue = orders
-    .filter(o => o.status !== 'cancelled')
-    .reduce((sum, o) => sum + (o.total || 0), 0);
-
   return {
-    totalOrders: orders.length,
-    todayOrders: todayOrders.length,
-    pendingOrders: pendingOrders.length,
-    todayRevenue,
-    totalRevenue,
-    totalProducts: getProducts(firmId ? { firmId } : {}).length,
+    totalOrders:    orders.length,
+    todayOrders:    todayOrders.length,
+    pendingOrders:  pendingOrders.length,
+    todayRevenue:   todayOrders.filter(o => o.status !== 'cancelled').reduce((s, o) => s + (o.total || 0), 0),
+    totalRevenue:   orders.filter(o => o.status !== 'cancelled').reduce((s, o) => s + (o.total || 0), 0),
+    totalProducts:  getProducts(firmId ? { firmId } : {}).length,
     totalCompanies: getCompanies(firmId).length,
-    totalShops: getShops().length,
-    totalStaff: getStaff().length,
-    activeRoutes: getRoutes(firmId).length
+    totalShops:     getShops().length,
+    totalStaff:     getStaff().length,
+    activeRoutes:   getRoutes(firmId).length
   };
 }
 
@@ -1022,210 +600,134 @@ function getTargets(firmId) {
   if (firmId) t = t.filter(x => x.firmId === firmId);
   return t;
 }
-
 function getTargetByStaff(staffId, month) {
   return (_data.targets || []).find(t => t.staffId === staffId && t.month === month) || null;
 }
-
 function setTarget(staffId, firmId, month, targetAmount) {
-  if (!_data.targets) _data.targets = [];
-  const existing = _data.targets.findIndex(t => t.staffId === staffId && t.month === month && t.firmId === firmId);
-  if (existing !== -1) {
-    _data.targets[existing].targetAmount = targetAmount;
-    if (isSupabaseConfigured) {
-      supabase.from('targets').update({ target_amount: targetAmount }).eq('id', _data.targets[existing].id)
-        .then(({ error }) => { if (error) console.error('Error updating target:', error); });
-    } else { persist(); }
-    return _data.targets[existing];
-  } else {
-    const newTarget = { id: uid(), staffId, firmId, month, targetAmount };
-    _data.targets.push(newTarget);
+  const existing = (_data.targets || []).find(t => t.staffId === staffId && t.firmId === firmId && t.month === month);
+  if (existing) {
+    existing.targetAmount = targetAmount;
     emit('targets:change', _data.targets);
-    if (isSupabaseConfigured) {
-      supabase.from('targets').insert(keysToSnake(newTarget))
-        .then(({ error }) => { if (error) console.error('Error adding target:', error); });
-    } else { persist(); }
-    return newTarget;
+    if (isSupabaseConfigured) sbWrite(supabase.from('targets').update({ target_amount: targetAmount }).eq('id', existing.id), 'setTarget:update');
+  } else {
+    const rec = { id: uid(), staffId, firmId, month, targetAmount };
+    if (!_data.targets) _data.targets = [];
+    _data.targets.push(rec);
+    emit('targets:change', _data.targets);
+    if (isSupabaseConfigured) sbWrite(supabase.from('targets').insert(keysToSnake(rec)), 'setTarget:insert');
   }
 }
 
 // ---------- Beat Plans ----------
 function getBeatPlans(firmId) {
-  let p = _data.beatPlans || [];
-  if (firmId) p = p.filter(x => x.firmId === firmId);
-  return p;
+  let b = _data.beatPlans || [];
+  if (firmId) b = b.filter(x => x.firmId === firmId);
+  return b;
 }
-
-function getBeatPlanByStaff(staffId, firmId) {
-  return (_data.beatPlans || []).filter(p => p.staffId === staffId && (!firmId || p.firmId === firmId));
-}
-
 function setBeatPlan(staffId, firmId, dayOfWeek, shopIds) {
-  if (!_data.beatPlans) _data.beatPlans = [];
-  const existingIdx = _data.beatPlans.findIndex(p => p.staffId === staffId && p.dayOfWeek === dayOfWeek && p.firmId === firmId);
-  const plan = { id: staffId + '_' + dayOfWeek + '_' + firmId, staffId, firmId, dayOfWeek, shopIds };
-  if (existingIdx !== -1) {
-    _data.beatPlans[existingIdx] = plan;
-    if (isSupabaseConfigured) {
-      supabase.from('beat_plans').upsert(keysToSnake(plan))
-        .then(({ error }) => { if (error) console.error('Error upserting beat plan:', error); });
-    } else { persist(); }
-  } else {
-    _data.beatPlans.push(plan);
+  const existing = (_data.beatPlans || []).find(b => b.staffId === staffId && b.firmId === firmId && b.dayOfWeek === dayOfWeek);
+  if (existing) {
+    existing.shopIds = shopIds;
     emit('beatPlans:change', _data.beatPlans);
-    if (isSupabaseConfigured) {
-      supabase.from('beat_plans').upsert(keysToSnake(plan))
-        .then(({ error }) => { if (error) console.error('Error upserting beat plan:', error); });
-    } else { persist(); }
+    if (isSupabaseConfigured) sbWrite(supabase.from('beat_plans').update({ shop_ids: shopIds }).eq('id', existing.id), 'setBeatPlan:update');
+  } else {
+    const rec = { id: uid(), staffId, firmId, dayOfWeek, shopIds };
+    if (!_data.beatPlans) _data.beatPlans = [];
+    _data.beatPlans.push(rec);
+    emit('beatPlans:change', _data.beatPlans);
+    if (isSupabaseConfigured) sbWrite(supabase.from('beat_plans').insert(keysToSnake(rec)), 'setBeatPlan:insert');
   }
-  return plan;
-}
-
-function deleteBeatPlan(staffId, firmId, dayOfWeek) {
-  if (!_data.beatPlans) return;
-  const plan = _data.beatPlans.find(p => p.staffId === staffId && p.dayOfWeek === dayOfWeek && p.firmId === firmId);
-  _data.beatPlans = _data.beatPlans.filter(p => !(p.staffId === staffId && p.dayOfWeek === dayOfWeek && p.firmId === firmId));
-  emit('beatPlans:change', _data.beatPlans);
-  if (isSupabaseConfigured && plan) {
-    supabase.from('beat_plans').delete().eq('id', plan.id)
-      .then(({ error }) => { if (error) console.error('Error deleting beat plan:', error); });
-  } else { persist(); }
 }
 
 // ---------- Returns ----------
 function getReturns(filters = {}) {
   let r = _data.returns || [];
-  if (filters.firmId) r = r.filter(x => x.firmId === filters.firmId);
+  if (filters.firmId)  r = r.filter(x => x.firmId  === filters.firmId);
   if (filters.staffId) r = r.filter(x => x.staffId === filters.staffId);
-  if (filters.status) r = r.filter(x => x.status === filters.status);
-  return r.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  return r;
 }
-
-function getReturnById(id) {
-  return (_data.returns || []).find(r => r.id === id) || null;
-}
-
-function addReturn(returnObj) {
+function addReturn(ret) {
   if (!_data.returns) _data.returns = [];
-  const newReturn = { id: uid(), status: 'pending', createdAt: new Date().toISOString(), ...returnObj };
-  _data.returns.push(newReturn);
+  _data.returns.push(ret);
   emit('returns:change', _data.returns);
-  if (isSupabaseConfigured) {
-    supabase.from('returns').insert(keysToSnake(newReturn))
-      .then(({ error }) => { if (error) console.error('Error adding return:', error); });
-  } else { persist(); }
-  return newReturn;
+  if (isSupabaseConfigured) sbWrite(supabase.from('returns').insert(keysToSnake(ret)), 'addReturn');
+  return ret;
 }
-
 function updateReturnStatus(id, status) {
-  if (!_data.returns) return null;
-  const idx = _data.returns.findIndex(r => r.id === id);
+  const idx = (_data.returns || []).findIndex(r => r.id === id);
   if (idx === -1) return null;
   _data.returns[idx].status = status;
-  if (status === 'approved') {
-    _data.returns[idx].resolvedAt = new Date().toISOString();
-    // Credit the shop's ledger
-    const ret = _data.returns[idx];
-    addLedgerEntry(ret.shopId, ret.total, 'credit', ret.id, `Sales Return approved for Order #${(ret.orderId || '').slice(-6).toUpperCase()}`);
-  }
+  _data.returns[idx].resolvedAt = new Date().toISOString();
   emit('returns:change', _data.returns);
-  if (isSupabaseConfigured) {
-    const updates = { status, resolved_at: _data.returns[idx].resolvedAt || null };
-    supabase.from('returns').update(updates).eq('id', id)
-      .then(({ error }) => { if (error) console.error('Error updating return:', error); });
-  } else { persist(); }
+  if (isSupabaseConfigured) sbWrite(supabase.from('returns').update({ status, resolved_at: _data.returns[idx].resolvedAt }).eq('id', id), 'updateReturnStatus');
   return _data.returns[idx];
 }
 
-// ---------- Reset ----------
-function resetData(seedData) {
-  _data = seedData;
-  saveData(_data);
-  emit('data:reset');
+// ---------- Report Helpers ----------
+function getSalesmanStats(staffId, month) {
+  const orders = getOrders({ staffId });
+  const monthly = orders.filter(o => o.createdAt && o.createdAt.startsWith(month));
+  return {
+    totalOrders: monthly.length,
+    delivered:   monthly.filter(o => o.status === 'delivered').length,
+    revenue:     monthly.filter(o => o.status !== 'cancelled').reduce((s, o) => s + (o.total || 0), 0)
+  };
+}
+function getTopProducts(firmId, limit = 20) {
+  const orders = getOrders({ firmId }).filter(o => o.status !== 'cancelled');
+  const map = {};
+  orders.forEach(o => (o.items || []).forEach(item => {
+    const k = item.productId || item.name;
+    if (!map[k]) map[k] = { name: item.name, qty: 0, revenue: 0 };
+    map[k].qty     += item.qty || 0;
+    map[k].revenue += item.subtotal || 0;
+  }));
+  return Object.values(map).sort((a, b) => b.revenue - a.revenue).slice(0, limit);
+}
+function getOutstandingAging(firmId) {
+  const shops = getShops();
+  return shops.map(shop => {
+    const outstanding = getShopOutstanding(shop.id);
+    return { shop, ...outstanding };
+  }).filter(x => x.totalOutstanding > 0);
+}
+function getShopPurchaseHistory(shopId) {
+  return getOrders({ shopId });
 }
 
 // ---------- Export ----------
 export const Store = {
-  init: initStore,
-  initSupabase,
-  // Events
-  on,
-  emit,
+  on, emit, getData, initSupabase,
   // Firms
-  getFirms,
-  getFirmById,
+  getFirms, getFirmById,
   // Companies
-  getCompanies,
-  getCompanyById,
-  addCompany,
-  updateCompany,
-  deleteCompany,
+  getCompanies, getCompanyById, addCompany, updateCompany, deleteCompany,
   // Products
-  getProducts,
-  getProductById,
-  getProductPrice,
-  addProduct,
-  updateProduct,
-  deleteProduct,
+  getProducts, getProductById, getProductPrice, addProduct, updateProduct, deleteProduct,
   // Shops
-  getShops,
-  getShopById,
-  addShop,
-  updateShop,
-  deleteShop,
-  getShopOutstanding,
-  settleShopOutstanding,
-  // Ledger & Geolocation
-  getLedger,
-  addLedgerEntry,
-  addLedgerPayment,
-  saveStaffLocation,
-  getStaffLocations,
-  getStaffLocation,
+  getShops, getShopById, addShop, updateShop, deleteShop,
+  getShopOutstanding, settleShopOutstanding,
   // Orders
-  getOrders,
-  getOrderById,
-  addOrder,
-  updateOrderStatus,
-  updateOrder,
-  deleteOrder,
+  getOrders, getOrderById, addOrder, updateOrderStatus, updateOrder, deleteOrder,
   // Routes
-  getRoutes,
-  getRouteById,
-  addRoute,
-  updateRoute,
-  deleteRoute,
+  getRoutes, getRouteById, addRoute, updateRoute, deleteRoute,
   // Staff
-  getStaff,
-  getStaffById,
-  addStaff,
-  updateStaff,
-  deleteStaff,
+  getStaff, getStaffById, addStaff, updateStaff, deleteStaff,
+  // Staff Locations
+  saveStaffLocation, getStaffLocations, getStaffLocation,
+  // Ledger
+  getLedger, addLedgerEntry, addLedgerPayment,
   // Auth
-  getAdminPin,
-  setAdminPin,
-  authenticate,
-  authenticateAsync,
-  getSession,
-  setSession,
-  clearSession,
+  getAdminPin, setAdminPin, authenticate, authenticateAsync,
+  getSession, setSession, clearSession,
   // Stats
   getStats,
   // Targets
-  getTargets,
-  getTargetByStaff,
-  setTarget,
+  getTargets, getTargetByStaff, setTarget,
   // Beat Plans
-  getBeatPlans,
-  getBeatPlanByStaff,
-  setBeatPlan,
-  deleteBeatPlan,
+  getBeatPlans, setBeatPlan,
   // Returns
-  getReturns,
-  getReturnById,
-  addReturn,
-  updateReturnStatus,
-  // Utility
-  reset: resetData,
-  uid
+  getReturns, addReturn, updateReturnStatus,
+  // Reports
+  getSalesmanStats, getTopProducts, getOutstandingAging, getShopPurchaseHistory,
 };

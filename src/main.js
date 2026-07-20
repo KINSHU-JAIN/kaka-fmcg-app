@@ -3,7 +3,6 @@
 // ============================================
 
 import { Store } from './data/store.js';
-import { getSeedData } from './data/seed.js';
 import { renderSidebar, initSidebar } from './components/sidebar.js';
 import * as Login from './auth/login.js';
 
@@ -193,15 +192,65 @@ async function navigate() {
   }
 }
 
-// Boot application asynchronously
+// Boot application
 async function boot() {
-  await Store.initSupabase(getSeedData());
+  // Show full-screen loading overlay while Supabase connects
+  const appRoot = document.getElementById('app') || document.body;
+  const loader = document.createElement('div');
+  loader.id = 'boot-loader';
+  loader.innerHTML = `
+    <style>
+      #boot-loader {
+        position: fixed; inset: 0; z-index: 9999;
+        background: var(--bg-base, #0a0f1e);
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 20px;
+      }
+      #boot-loader .brand-icons { display: flex; gap: 8px; }
+      #boot-loader .brand-icon {
+        width: 44px; height: 44px; border-radius: 12px;
+        display: flex; align-items: center; justify-content: center;
+        font-weight: 800; font-size: 1rem; color: #0a0f1e;
+      }
+      #boot-loader .spin-ring {
+        width: 42px; height: 42px; border-radius: 50%;
+        border: 4px solid rgba(245,158,11,0.2);
+        border-top-color: #f59e0b;
+        animation: bootSpin 0.9s linear infinite;
+      }
+      #boot-loader p { color: rgba(255,255,255,0.45); font-size: 0.85rem; margin: 0; font-family: 'Inter', sans-serif; }
+      @keyframes bootSpin { to { transform: rotate(360deg); } }
+    </style>
+    <div class="brand-icons">
+      <div class="brand-icon" style="background:linear-gradient(135deg,#f59e0b,#fbbf24);">KA</div>
+      <div class="brand-icon" style="background:linear-gradient(135deg,#14b8a6,#06b6d4);">KM</div>
+    </div>
+    <div class="spin-ring"></div>
+    <p>Connecting to server…</p>
+  `;
+  document.body.appendChild(loader);
 
-  // Listen for hash changes
-  window.addEventListener('hashchange', navigate);
+  // Listen for data ready / error
+  Store.on('data:ready', () => {
+    loader.remove();
+    // Update firm from DB if available
+    const firms = Store.getFirms();
+    if (firms.length > 0) window.__currentFirm = firms[0].id;
+    window.addEventListener('hashchange', navigate);
+    navigate();
+  });
 
-  // Initial navigation
-  navigate();
+  Store.on('data:error', (err) => {
+    loader.innerHTML = `
+      <style>#boot-loader p{color:rgba(255,255,255,0.6);font-family:'Inter',sans-serif;text-align:center;max-width:300px;line-height:1.5;}</style>
+      <span class="material-icons-round" style="font-size:48px;color:#ef4444;">cloud_off</span>
+      <p style="font-size:1rem;font-weight:600;color:#fff;">Could not connect to server</p>
+      <p>Please check your internet connection and refresh the page.</p>
+      <button onclick="location.reload()" style="margin-top:8px;padding:10px 24px;background:#f59e0b;color:#0a0f1e;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:0.9rem;">Retry</button>
+    `;
+  });
+
+  await Store.initSupabase();
 }
 
 boot();
